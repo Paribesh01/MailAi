@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Better Auth Core Tables ───────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions      Session[]
+  accounts      Account[]
+  threads       Thread[]
+  labels        Label[]
+  followUps     FollowUp[]
+  emailSyncs    EmailSync[]
+  preferences   UserPreferences?
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+// ─── Email App Tables ──────────────────────────────────────────────────────
+
+enum EmailCategory {
+  NEEDS_ATTENTION
+  CAN_WAIT
+  IGNORE
+}
+
+model Thread {
+  id                String        @id @default(cuid())
+  gmailThreadId     String        @unique
+  subject           String
+  snippet           String        @db.Text
+  category          EmailCategory @default(NEEDS_ATTENTION)
+  isRead            Boolean       @default(false)
+  isStarred         Boolean       @default(false)
+  isArchived        Boolean       @default(false)
+  isSnoozed         Boolean       @default(false)
+  snoozedUntil      DateTime?
+  hasFollowUp       Boolean       @default(false)
+  lastMessageAt     DateTime
+  participantEmails String[]
+  participantNames  String[]
+  messageCount      Int           @default(1)
+  aiSummary         String?       @db.Text
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emails    Email[]
+  followUps FollowUp[]
+  labels    ThreadLabel[]
+
+  @@index([userId, category])
+  @@index([userId, isArchived])
+  @@index([userId, lastMessageAt])
+  @@map("thread")
+}
+
+model Email {
+  id             String    @id @default(cuid())
+  gmailMessageId String    @unique
+  from           String
+  fromName       String?
+  to             String[]
+  cc             String[]
+  bcc            String[]
+  subject        String
+  bodyHtml       String?   @db.Text
+  bodyText       String?   @db.Text
+  snippet        String    @db.Text
+  isRead         Boolean   @default(false)
+  isDraft        Boolean   @default(false)
+  isSent         Boolean   @default(false)
+  sentAt         DateTime?
+  internalDate   DateTime
+  headers        Json      @default("{}")
+  attachments    Json      @default("[]")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  threadId String
+  thread   Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@map("email")
+}
+
+model Label {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#6366f1")
+  createdAt DateTime @default(now())
+
+  userId  String
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threads ThreadLabel[]
+
+  @@unique([userId, name])
+  @@map("label")
+}
+
+model ThreadLabel {
+  threadId String
+  labelId  String
+  thread   Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  label    Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([threadId, labelId])
+  @@map("thread_label")
+}
+
+model FollowUp {
+  id           String   @id @default(cuid())
+  scheduledFor DateTime
+  message      String?  @db.Text
+  isDone       Boolean  @default(false)
+  aiGenerated  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  threadId String
+  thread   Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scheduledFor])
+  @@map("follow_up")
+}
+
+model EmailSync {
+  id          String   @id @default(cuid())
+  lastSyncAt  DateTime @default(now())
+  historyId   String?
+  totalSynced Int      @default(0)
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_sync")
+}
+
+model UserPreferences {
+  id               String   @id @default(cuid())
+  theme            String   @default("system")
+  emailSignature   String?  @db.Text
+  autoFollowUpDays Int      @default(3)
+  notifyOnNewEmail Boolean  @default(true)
+  dailyDigest      Boolean  @default(false)
+  aiVoiceSamples   String[]
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}

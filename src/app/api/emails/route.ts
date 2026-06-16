@@ -1,0 +1,65 @@
+import { NextRequest, NextResponse } from "next/server"
+import { requireSession } from "@/lib/session"
+import { prisma } from "@/lib/prisma"
+import { sendEmail } from "@/lib/gmail"
+
+export async function GET(req: NextRequest) {
+  try {
+    const session = await requireSession()
+    const { searchParams } = new URL(req.url)
+    const category = searchParams.get("category")
+    const archived = searchParams.get("archived") === "true"
+    const starred = searchParams.get("starred") === "true"
+    const snoozed = searchParams.get("snoozed") === "true"
+    const page = parseInt(searchParams.get("page") ?? "1")
+    const limit = parseInt(searchParams.get("limit") ?? "30")
+
+    const where: any = {
+      userId: session.user.id,
+      isArchived: archived,
+    }
+
+    if (category) where.category = category
+    if (starred) where.isStarred = true
+    if (snoozed) where.isSnoozed = true
+
+    const [threads, total] = await Promise.all([
+      prisma.thread.findMany({
+        where,
+        orderBy: { lastMessageAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          labels: { include: { label: true } },
+          followUps: { where: { isDone: false }, orderBy: { scheduledFor: "asc" } },
+          _count: { select: { emails: true } },
+        },
+      }),
+      prisma.thread.count({ where }),
+    ])
+
+    return NextResponse.json({ threads, total, page, pages: Math.ceil(total / limit) })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await requireSession()
+    const body = await req.json()
+    const { to, subject, html, replyToMessageId, gmailThreadId } = body
+
+    const result = await sendEmail(session.user.id, {
+      to,
+      subject,
+      body: html,
+      replyToMessageId,
+      threadId: gmailThreadId,
+    })
+
+    return NextResponse.json({ messageId: result.id })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}

@@ -1,0 +1,15 @@
+import { redirect } from "next/navigation"
+import { getSession } from "@/lib/session"
+import { Sidebar } from "@/components/layout/sidebar"
+
+export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
+  const session = await getSession()
+  if (!session) redirect("/login")
+
+  return (
+    <div className="h-screen flex overflow-hidden bg-background">
+      <Sidebar user={session.user} />
+      <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+    </div>
+  )
+}
