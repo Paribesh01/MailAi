@@ -13,6 +13,7 @@ export async function POST() {
     const { threads } = await fetchThreads(userId, 50)
 
     let synced = 0
+    let newThreads = 0
 
     for (const t of threads) {
       const existing = await prisma.thread.findUnique({
@@ -24,6 +25,7 @@ export async function POST() {
       let aiSummary = existing?.aiSummary ?? null
 
       if (!existing) {
+        newThreads++
         const firstMsg = t.messages[0]
         if (firstMsg) {
           const result = await categorizeEmail({
@@ -94,7 +96,7 @@ export async function POST() {
       update: { lastSyncAt: new Date(), totalSynced: (syncRecord?.totalSynced ?? 0) + synced },
     })
 
-    return NextResponse.json({ synced })
+    return NextResponse.json({ synced, newThreads })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

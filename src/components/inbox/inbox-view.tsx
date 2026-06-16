@@ -27,7 +27,9 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   const [activeCategory, setActiveCategory] = useState<EmailCategory | "ALL">("NEEDS_ATTENTION")
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [newEmailsBanner, setNewEmailsBanner] = useState(false)
   const hasAutoSynced = useRef(false)
+  const isPolling = useRef(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Thread[] | null>(null)
   const [composeOpen, setComposeOpen] = useState(false)
@@ -77,10 +79,11 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
 
   const handleSync = useCallback(async () => {
     setSyncing(true)
+    setNewEmailsBanner(false)
     try {
       const res = await fetch("/api/sync", { method: "POST" })
       const data = await res.json()
-      if (data.synced > 0) toast.success(`Synced ${data.synced} threads`)
+      if (data.newThreads > 0) toast.success(`${data.newThreads} new email${data.newThreads > 1 ? "s" : ""}`)
       await fetchThreads(1)
     } catch {
       toast.error("Sync failed")
@@ -99,6 +102,28 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
       }
     })
   }, [fetchThreads, handleSync])
+
+  // Background poll every 60 s — silent, only notifies on genuinely new threads
+  useEffect(() => {
+    const poll = async () => {
+      if (isPolling.current || syncing) return
+      isPolling.current = true
+      try {
+        const res = await fetch("/api/sync", { method: "POST" })
+        const data = await res.json()
+        if (data.newThreads > 0) {
+          setNewEmailsBanner(true)
+        }
+      } catch {
+        // silent — don't bother the user if background poll fails
+      } finally {
+        isPolling.current = false
+      }
+    }
+
+    const id = setInterval(poll, 60_000)
+    return () => clearInterval(id)
+  }, [syncing])
 
   async function handleSearch(q: string) {
     setSearchQuery(q)
@@ -140,6 +165,17 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
             <RefreshCw className={cn("w-4 h-4", syncing && "animate-spin")} />
           </Button>
         </div>
+
+        {/* New emails banner */}
+        {newEmailsBanner && (
+          <button
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 text-primary text-xs font-medium hover:bg-primary/15 transition-colors border-b"
+            onClick={() => { setNewEmailsBanner(false); fetchThreads(1) }}
+          >
+            <RefreshCw className="w-3 h-3" />
+            New emails arrived — click to refresh
+          </button>
+        )}
 
         {/* Split tabs — only show when not in a special view */}
         {!isStarred && !isSnoozed && !isArchived && !isFollowups && !searchQuery && (
