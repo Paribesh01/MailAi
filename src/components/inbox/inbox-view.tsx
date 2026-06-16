@@ -8,10 +8,12 @@ import { EmailList } from "./email-list"
 import { ThreadPanel } from "./thread-panel"
 import { SearchBar } from "./search-bar"
 import { ComposeModal } from "../compose/compose-modal"
+import { BulkActionBar } from "@/components/inbox/bulk-action-bar"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 
 interface InboxViewProps {
   userName: string
@@ -35,6 +37,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   const [composeOpen, setComposeOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const isStarred = searchParams.get("starred") === "true"
   const isSnoozed = searchParams.get("snoozed") === "true"
@@ -141,7 +144,61 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
     setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)))
   }
 
+  async function handleArchiveThread(id: string) {
+    updateThread(id, { isArchived: true })
+    try {
+      await fetch(`/api/threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isArchived: true }),
+      })
+      toast.success("Archived")
+    } catch {
+      updateThread(id, { isArchived: false })
+      toast.error("Failed to archive")
+    }
+  }
+
+  async function handleStarThread(id: string) {
+    const thread = threads.find((t) => t.id === id)
+    if (!thread) return
+    const next = !thread.isStarred
+    updateThread(id, { isStarred: next })
+    try {
+      await fetch(`/api/threads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isStarred: next }),
+      })
+    } catch {
+      updateThread(id, { isStarred: !next })
+      toast.error("Failed to update")
+    }
+  }
+
+  function handleToggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const displayThreads = searchResults ?? threads
+
+  useKeyboardShortcuts({
+    threads: displayThreads,
+    selectedThread,
+    onSelectThread: setSelectedThread,
+    onArchive: handleArchiveThread,
+    onStar: handleStarThread,
+    onCompose: () => setComposeOpen(true),
+    onSearch: () => {
+      const input = document.querySelector<HTMLInputElement>("input[placeholder='Search emails...']")
+      input?.focus()
+    },
+  })
 
   const counts = threads.reduce(
     (acc, t) => { acc[t.category] = (acc[t.category] ?? 0) + 1; return acc },
@@ -153,14 +210,14 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
       {/* Left pane */}
       <div className={cn("flex flex-col border-r", selectedThread ? "w-96 shrink-0" : "flex-1")}>
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b">
+        <div className="flex items-center gap-2 px-4 py-3 border-b bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-transparent">
           <SearchBar value={searchQuery} onChange={handleSearch} />
           <Button
             variant="ghost"
             size="icon"
             onClick={handleSync}
             disabled={syncing}
-            className="shrink-0"
+            className="shrink-0 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10"
           >
             <RefreshCw className={cn("w-4 h-4", syncing && "animate-spin")} />
           </Button>
@@ -186,6 +243,17 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
           />
         )}
 
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="px-3 py-2 border-b">
+            <BulkActionBar
+              selectedIds={selectedIds}
+              onClear={() => setSelectedIds(new Set())}
+              onUpdate={updateThread}
+            />
+          </div>
+        )}
+
         {/* Email list */}
         <EmailList
           threads={displayThreads}
@@ -196,6 +264,8 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
           onUpdate={updateThread}
           hasMore={hasMore}
           onLoadMore={() => { const next = page + 1; setPage(next); fetchThreads(next) }}
+          selectedIds={selectedIds}
+          onToggleSelect={handleToggleSelect}
         />
       </div>
 

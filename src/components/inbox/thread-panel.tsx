@@ -3,17 +3,19 @@
 import { useEffect, useState } from "react"
 import { Thread, ThreadDetail, Email } from "@/types/email"
 import { cn } from "@/lib/utils"
-import { format } from "date-fns"
+import { format, formatDistanceToNow, differenceInHours } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { AiDraftPanel } from "./ai-draft-panel"
 import { FollowUpModal } from "./follow-up-modal"
+import { ActionItemsPanel } from "./action-items-panel"
+import { SmartReplyChips } from "./smart-reply-chips"
 import { toast } from "sonner"
 import {
   X, Star, Archive, Trash2, Bell, Sparkles, ChevronDown,
-  ChevronUp, MoreHorizontal, Reply, Forward, Clock,
+  ChevronUp, MoreHorizontal, Reply, Forward, CheckSquare, Calendar,
+  ExternalLink, Clock,
 } from "lucide-react"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -27,21 +29,44 @@ interface ThreadPanelProps {
   userEmail: string
 }
 
+// Detect date-like phrases in email body
+function detectMeeting(text: string): boolean {
+  const patterns = [
+    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+    /\b\d{1,2}(am|pm|:\d{2})\b/i,
+    /\b(today|tomorrow|next week|this week)\b/i,
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{1,2}/i,
+    /\bcall\b|\bmeeting\b|\bschedule\b|\bsync\b/i,
+  ]
+  return patterns.some((p) => p.test(text))
+}
+
+// Parse List-Unsubscribe header and return a URL or mailto
+function parseUnsubscribeUrl(header: string): string | null {
+  const httpMatch = header.match(/<(https?:\/\/[^>]+)>/)
+  if (httpMatch) return httpMatch[1]
+  const mailtoMatch = header.match(/<(mailto:[^>]+)>/)
+  if (mailtoMatch) return mailtoMatch[1]
+  return null
+}
+
 export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }: ThreadPanelProps) {
   const [thread, setThread] = useState<ThreadDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set())
   const [draftOpen, setDraftOpen] = useState(false)
+  const [prefillDraft, setPrefillDraft] = useState("")
   const [followUpOpen, setFollowUpOpen] = useState(false)
+  const [actionItemsOpen, setActionItemsOpen] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
 
-  const refetchThread = async (expandLastId?: string) => {
+  const refetchThread = async () => {
     try {
       const data = await fetch(`/api/threads/${threadId}`).then((r) => r.json())
       setThread(data)
       if (data.emails?.length) {
         const lastId = data.emails[data.emails.length - 1].id
-        setExpandedEmails((prev) => new Set([...prev, expandLastId ?? lastId]))
+        setExpandedEmails((prev) => new Set([...prev, lastId]))
       }
     } catch {
       toast.error("Failed to load thread")
@@ -50,6 +75,7 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
 
   useEffect(() => {
     setLoading(true)
+    setActionItemsOpen(false)
     refetchThread().finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId])
@@ -123,6 +149,11 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
     })
   }
 
+  function openDraftWithPrefill(text: string) {
+    setPrefillDraft(text)
+    setDraftOpen(true)
+  }
+
   if (loading) {
     return (
       <div className="h-full flex flex-col p-6 gap-4">
@@ -143,10 +174,14 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
     { value: "IGNORE", label: "Ignore" },
   ]
 
+  // Response time badge
+  const hoursSinceLastMessage = differenceInHours(new Date(), new Date(thread.lastMessageAt))
+  const showNoReplyBadge = thread.messageCount > 1 && hoursSinceLastMessage > 24
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b shrink-0">
+      <div className="flex items-center gap-1 px-4 py-2 border-b shrink-0 bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-transparent">
         <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
           <X className="w-4 h-4" />
         </Button>
@@ -181,13 +216,7 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
 
           <Tooltip>
             <TooltipTrigger render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleSummarize}
-                disabled={summarizing}
-              >
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSummarize} disabled={summarizing}>
                 <Sparkles className={cn("w-4 h-4", summarizing && "animate-pulse text-primary")} />
               </Button>
             } />
@@ -202,10 +231,31 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
             } />
             <TooltipContent>AI draft reply</TooltipContent>
           </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("h-8 w-8", actionItemsOpen && "bg-indigo-500/10 text-indigo-500")}
+                onClick={() => setActionItemsOpen((v) => !v)}
+              >
+                <CheckSquare className="w-4 h-4" />
+              </Button>
+            } />
+            <TooltipContent>Action items</TooltipContent>
+          </Tooltip>
         </div>
 
-        {/* Category badge */}
+        {/* Category + response time */}
         <div className="ml-auto flex items-center gap-2">
+          {showNoReplyBadge && (
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20 font-medium">
+              <Clock className="w-2.5 h-2.5" />
+              No reply {Math.floor(hoursSinceLastMessage / 24)}d
+            </span>
+          )}
+
           <DropdownMenu>
             <DropdownMenuTrigger render={
               <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
@@ -242,12 +292,19 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
       <div className="px-6 py-4 border-b shrink-0">
         <h2 className="text-lg font-semibold leading-tight">{thread.subject}</h2>
         {thread.aiSummary && (
-          <p className="mt-2 text-sm text-muted-foreground bg-primary/5 rounded-lg px-3 py-2 border border-primary/10">
-            <Sparkles className="w-3 h-3 inline mr-1 text-primary" />
+          <p className="mt-2 text-sm text-muted-foreground bg-indigo-500/5 rounded-lg px-3 py-2 border border-indigo-500/10">
+            <Sparkles className="w-3 h-3 inline mr-1 text-indigo-500" />
             {thread.aiSummary}
           </p>
         )}
       </div>
+
+      {/* Action items panel */}
+      {actionItemsOpen && (
+        <div className="border-b shrink-0">
+          <ActionItemsPanel threadId={threadId} />
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
@@ -260,11 +317,18 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
               email={email}
               expanded={isExpanded}
               isLast={isLast}
+              subject={thread.subject}
               onToggle={() => toggleEmail(email.id)}
               onReply={() => setDraftOpen(true)}
             />
           )
         })}
+
+        {/* Smart reply chips below last email */}
+        <SmartReplyChips
+          threadId={threadId}
+          onSelect={(text) => openDraftWithPrefill(text)}
+        />
       </div>
 
       {/* Reply / Draft panel */}
@@ -273,11 +337,13 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
           threadId={threadId}
           thread={thread}
           userEmail={userEmail}
-          onClose={() => setDraftOpen(false)}
+          onClose={() => { setDraftOpen(false); setPrefillDraft("") }}
           onSent={async () => {
             setDraftOpen(false)
+            setPrefillDraft("")
             await refetchThread()
           }}
+          prefillDraft={prefillDraft}
         />
       )}
 
@@ -298,21 +364,30 @@ function EmailBubble({
   email,
   expanded,
   isLast,
+  subject,
   onToggle,
   onReply,
 }: {
   email: Email
   expanded: boolean
   isLast: boolean
+  subject: string
   onToggle: () => void
   onReply: () => void
 }) {
   const senderDisplay = email.fromName ? `${email.fromName} <${email.from}>` : email.from
   const date = format(new Date(email.internalDate), "MMM d, yyyy 'at' h:mm a")
 
+  const headers = (email.headers ?? {}) as Record<string, string>
+  const unsubscribeHeader = headers["List-Unsubscribe"] ?? headers["list-unsubscribe"] ?? ""
+  const unsubscribeUrl = unsubscribeHeader ? parseUnsubscribeUrl(unsubscribeHeader) : null
+
+  const hasMeeting = expanded && detectMeeting(email.bodyText || email.snippet)
+  const calendarUrl = `https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(subject)}`
+
   return (
-    <div className={cn("rounded-xl border", isLast && "shadow-sm")}>
-      {/* Header — always visible */}
+    <div className={cn("rounded-xl border transition-shadow", isLast && "shadow-sm ring-1 ring-border/50")}>
+      {/* Header */}
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/30 rounded-xl"
         onClick={onToggle}
@@ -320,7 +395,7 @@ function EmailBubble({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium truncate">{senderDisplay}</span>
-            {!email.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+            {!email.isRead && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />}
           </div>
           {!expanded && (
             <p className="text-xs text-muted-foreground truncate mt-0.5">{email.snippet}</p>
@@ -335,7 +410,6 @@ function EmailBubble({
       {/* Body */}
       {expanded && (
         <div className="px-4 pb-4">
-          {/* To/Cc */}
           {email.to.length > 0 && (
             <p className="text-xs text-muted-foreground mb-3">
               To: {email.to.join(", ")}
@@ -343,7 +417,6 @@ function EmailBubble({
             </p>
           )}
 
-          {/* Body */}
           <div className="text-sm">
             {email.bodyHtml ? (
               <div
@@ -367,14 +440,28 @@ function EmailBubble({
             </div>
           )}
 
-          {/* Reply button */}
-          <div className="mt-4 flex gap-2">
+          {/* Action buttons */}
+          <div className="mt-4 flex flex-wrap gap-2">
             <Button size="sm" variant="outline" className="gap-1.5" onClick={onReply}>
               <Reply className="w-3.5 h-3.5" /> Reply with AI
             </Button>
             <Button size="sm" variant="ghost" className="gap-1.5">
               <Forward className="w-3.5 h-3.5" /> Forward
             </Button>
+            {hasMeeting && (
+              <a href={calendarUrl} target="_blank" rel="noopener noreferrer">
+                <Button size="sm" variant="ghost" className="gap-1.5 text-teal-600 hover:text-teal-700 hover:bg-teal-500/10">
+                  <Calendar className="w-3.5 h-3.5" /> Add to Calendar
+                </Button>
+              </a>
+            )}
+            {unsubscribeUrl && (
+              <a href={unsubscribeUrl} target="_blank" rel="noopener noreferrer">
+                <Button size="sm" variant="ghost" className="gap-1.5 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10">
+                  <ExternalLink className="w-3.5 h-3.5" /> Unsubscribe
+                </Button>
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -384,7 +471,7 @@ function EmailBubble({
 
 function CategoryDot({ category }: { category: string }) {
   const colors: Record<string, string> = {
-    NEEDS_ATTENTION: "bg-red-500",
+    NEEDS_ATTENTION: "bg-rose-500",
     CAN_WAIT: "bg-amber-500",
     IGNORE: "bg-slate-400",
   }

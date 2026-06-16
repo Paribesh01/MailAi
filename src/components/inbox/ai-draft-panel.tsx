@@ -1,13 +1,24 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { ThreadDetail } from "@/types/email"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
-import { Sparkles, Send, X, RefreshCw, Wand2 } from "lucide-react"
+import { Sparkles, Send, X, RefreshCw, Wand2, ChevronDown, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { SmartReplyChips } from "@/components/inbox/smart-reply-chips"
+
+type Tone = "Friendly" | "Formal" | "Brief" | "Assertive"
+
+const TONE_OPTIONS: Tone[] = ["Friendly", "Formal", "Brief", "Assertive"]
+
+interface Template {
+  id: string
+  name: string
+  body: string
+}
 
 interface AiDraftPanelProps {
   threadId: string
@@ -15,18 +26,66 @@ interface AiDraftPanelProps {
   userEmail: string
   onClose: () => void
   onSent?: () => void
+  prefillDraft?: string
 }
 
-export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent }: AiDraftPanelProps) {
+export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, prefillDraft = "" }: AiDraftPanelProps) {
   const lastEmail = thread.emails[thread.emails.length - 1]
   const replyTo = lastEmail?.from ?? ""
 
   const [to, setTo] = useState(replyTo === userEmail ? thread.emails[0]?.from ?? "" : replyTo)
-  const [draft, setDraft] = useState("")
+  const [draft, setDraft] = useState(prefillDraft)
   const [instruction, setInstruction] = useState("")
   const [generating, setGenerating] = useState(false)
   const [sending, setSending] = useState(false)
   const [improving, setImproving] = useState(false)
+  const [tone, setTone] = useState<Tone>("Friendly")
+
+  // Template picker state
+  const [templates, setTemplates] = useState<Template[]>([])
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const templateRef = useRef<HTMLDivElement>(null)
+
+  // Close template dropdown on outside click
+  useEffect(() => {
+    if (!templatesOpen) return
+    function handleClick(e: MouseEvent) {
+      if (templateRef.current && !templateRef.current.contains(e.target as Node)) {
+        setTemplatesOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [templatesOpen])
+
+  async function openTemplates() {
+    setTemplatesOpen((prev) => !prev)
+    if (templates.length === 0 && !templatesLoading) {
+      setTemplatesLoading(true)
+      try {
+        const res = await fetch("/api/templates")
+        if (!res.ok) throw new Error("Failed to fetch templates")
+        const data = await res.json()
+        setTemplates(Array.isArray(data) ? data : (data.templates ?? []))
+      } catch {
+        toast.error("Could not load templates")
+        setTemplates([])
+      } finally {
+        setTemplatesLoading(false)
+      }
+    }
+  }
+
+  function applyTemplate(template: Template) {
+    setDraft(template.body)
+    setTemplatesOpen(false)
+  }
+
+  function buildInstruction() {
+    const base = instruction.trim()
+    return base ? `${base}\nTone: ${tone}` : `Tone: ${tone}`
+  }
 
   async function generateDraft() {
     setGenerating(true)
@@ -34,7 +93,7 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent }: A
       const res = await fetch("/api/ai/draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId, instruction }),
+        body: JSON.stringify({ threadId, instruction: buildInstruction() }),
       })
       const data = await res.json()
       setDraft(data.draft)
@@ -52,7 +111,7 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent }: A
       const res = await fetch("/api/ai/improve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft, instruction }),
+        body: JSON.stringify({ draft, instruction: buildInstruction() }),
       })
       const data = await res.json()
       setDraft(data.draft)
@@ -111,7 +170,27 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent }: A
           />
         </div>
 
-        {/* Instruction */}
+        {/* Tone selector */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs text-muted-foreground mr-0.5">Tone:</span>
+          {TONE_OPTIONS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTone(t)}
+              className={cn(
+                "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors duration-150 select-none",
+                tone === t
+                  ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
+                  : "bg-transparent border-border text-muted-foreground hover:border-indigo-400 hover:text-indigo-600"
+              )}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Instruction row with Templates button */}
         <div className="flex gap-2">
           <Input
             value={instruction}
@@ -120,6 +199,45 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent }: A
             placeholder="Instructions (e.g. 'be brief', 'ask for a call', 'decline politely')..."
             onKeyDown={(e) => { if (e.key === "Enter") draft ? improveDraft() : generateDraft() }}
           />
+
+          {/* Templates picker */}
+          <div className="relative shrink-0" ref={templateRef}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5"
+              onClick={openTemplates}
+              type="button"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Templates
+              <ChevronDown className="w-3 h-3 opacity-60" />
+            </Button>
+            {templatesOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-md border bg-popover shadow-md text-popover-foreground">
+                {templatesLoading ? (
+                  <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
+                ) : templates.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-muted-foreground">No templates found.</p>
+                ) : (
+                  <ul className="py-1 max-h-48 overflow-y-auto">
+                    {templates.map((tpl) => (
+                      <li key={tpl.id}>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                          onClick={() => applyTemplate(tpl)}
+                        >
+                          {tpl.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
           <Button
             size="sm"
             variant="outline"
@@ -136,6 +254,14 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent }: A
             )}
           </Button>
         </div>
+
+        {/* Smart reply chips — shown only when draft is empty */}
+        {!draft && (
+          <SmartReplyChips
+            threadId={threadId}
+            onSelect={(text) => setDraft(text)}
+          />
+        )}
 
         {/* Draft textarea */}
         <Textarea

@@ -52,6 +52,7 @@ export interface Email {
   isDraft: boolean
   isSent: boolean
   internalDate: string
+  headers: Record<string, string>
   attachments: Attachment[]
 }
 

@@ -17,9 +17,22 @@ interface EmailListProps {
   onUpdate: (id: string, updates: Partial<Thread>) => void
   hasMore: boolean
   onLoadMore: () => void
+  selectedIds?: Set<string>
+  onToggleSelect?: (id: string) => void
 }
 
-export function EmailList({ threads, loading, syncing, selectedId, onSelect, onUpdate, hasMore, onLoadMore }: EmailListProps) {
+export function EmailList({
+  threads,
+  loading,
+  syncing,
+  selectedId,
+  onSelect,
+  onUpdate,
+  hasMore,
+  onLoadMore,
+  selectedIds = new Set(),
+  onToggleSelect,
+}: EmailListProps) {
   async function toggleStar(e: React.MouseEvent, thread: Thread) {
     e.stopPropagation()
     const next = !thread.isStarred
@@ -87,6 +100,8 @@ export function EmailList({ threads, loading, syncing, selectedId, onSelect, onU
     )
   }
 
+  const anySelected = selectedIds.size > 0
+
   return (
     <div className="flex-1 overflow-y-auto divide-y">
       {threads.map((thread) => (
@@ -97,6 +112,9 @@ export function EmailList({ threads, loading, syncing, selectedId, onSelect, onU
           onSelect={() => onSelect(thread.id)}
           onStar={(e) => toggleStar(e, thread)}
           onArchive={(e) => archiveThread(e, thread)}
+          isChecked={selectedIds.has(thread.id)}
+          onToggleSelect={onToggleSelect ? () => onToggleSelect(thread.id) : undefined}
+          showCheckbox={anySelected}
         />
       ))}
       {hasMore && (
@@ -116,12 +134,18 @@ function ThreadRow({
   onSelect,
   onStar,
   onArchive,
+  isChecked = false,
+  onToggleSelect,
+  showCheckbox = false,
 }: {
   thread: Thread
   selected: boolean
   onSelect: () => void
   onStar: (e: React.MouseEvent) => void
   onArchive: (e: React.MouseEvent) => void
+  isChecked?: boolean
+  onToggleSelect?: () => void
+  showCheckbox?: boolean
 }) {
   const senderName =
     thread.participantNames[0] || thread.participantEmails[0]?.split("@")[0] || "Unknown"
@@ -131,24 +155,93 @@ function ThreadRow({
     .replace("about ", "")
     .replace(" ago", "")
 
+  const category = thread.category
+
+  const isIgnore = category === "IGNORE"
+
+  const borderClass = isChecked
+    ? "border-l-[3px] border-indigo-500"
+    : category === "NEEDS_ATTENTION"
+    ? "border-l-[3px] border-rose-500"
+    : category === "CAN_WAIT"
+    ? "border-l-[3px] border-amber-500"
+    : "border-l-[3px] border-transparent"
+
+  const rowBg = selected
+    ? "bg-indigo-500/10"
+    : isChecked
+    ? "bg-indigo-500/5"
+    : category === "NEEDS_ATTENTION" && !thread.isRead
+    ? "bg-rose-500/[0.04]"
+    : category === "CAN_WAIT" && !thread.isRead
+    ? "bg-amber-500/[0.04]"
+    : ""
+
+  const categoryDot =
+    category === "NEEDS_ATTENTION" ? (
+      <span className="inline-block w-2 h-2 rounded-full bg-rose-500 shrink-0 mt-px ring-2 ring-rose-500/20" />
+    ) : category === "CAN_WAIT" ? (
+      <span className="inline-block w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-px ring-2 ring-amber-500/20" />
+    ) : null
+
+  function handleCheckboxClick(e: React.MouseEvent) {
+    e.stopPropagation()
+    onToggleSelect?.()
+  }
+
   return (
     <div
       onClick={onSelect}
       className={cn(
-        "group relative flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors",
-        selected ? "bg-primary/8" : "hover:bg-muted/50",
-        !thread.isRead && "bg-primary/4"
+        "group relative flex items-start gap-3 px-4 py-3 cursor-pointer transition-all duration-150",
+        borderClass,
+        rowBg,
+        !selected && !isChecked && !rowBg && "hover:bg-muted/40",
+        isIgnore && "opacity-50"
       )}
     >
       {/* Unread dot */}
       {!thread.isRead && (
-        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary" />
+        <span className={cn(
+          "absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full",
+          category === "NEEDS_ATTENTION" ? "bg-rose-500" : category === "CAN_WAIT" ? "bg-amber-500" : "bg-indigo-500"
+        )} />
       )}
 
-      <div className="flex-1 min-w-0 space-y-0.5">
+      {/* Bulk select checkbox — visible on hover or when any row is selected */}
+      {onToggleSelect && (
+        <div
+          className={cn(
+            "absolute left-4 top-1/2 -translate-y-1/2 z-10 transition-opacity",
+            showCheckbox || isChecked ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
+          onClick={handleCheckboxClick}
+        >
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={() => {}}
+            className="w-3.5 h-3.5 rounded accent-primary cursor-pointer"
+          />
+        </div>
+      )}
+
+      <div
+        className={cn(
+          "flex-1 min-w-0 space-y-0.5 transition-all",
+          (showCheckbox || isChecked) && onToggleSelect ? "pl-5" : ""
+        )}
+      >
         {/* Row 1: Sender + time */}
         <div className="flex items-center gap-1">
-          <span className={cn("text-sm truncate", !thread.isRead ? "font-semibold" : "font-medium")}>
+          {categoryDot}
+          <span
+            className={cn(
+              "text-sm truncate",
+              !thread.isRead ? "font-semibold" : "font-medium",
+              isIgnore && "text-muted-foreground"
+            )}
+          >
             {senderName}
           </span>
           {extraCount > 0 && (
@@ -164,7 +257,13 @@ function ThreadRow({
         </div>
 
         {/* Row 2: Subject */}
-        <p className={cn("text-sm truncate", !thread.isRead ? "font-medium" : "text-foreground/80")}>
+        <p
+          className={cn(
+            "text-sm truncate",
+            !thread.isRead ? "font-medium" : "text-foreground/80",
+            isIgnore && "text-muted-foreground"
+          )}
+        >
           {thread.subject}
         </p>
 
