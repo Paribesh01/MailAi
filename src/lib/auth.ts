@@ -3,6 +3,8 @@ import { prismaAdapter } from "better-auth/adapters/prisma"
 import { prisma } from "@/lib/prisma"
 
 export const auth = betterAuth({
+  baseURL: process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+
   database: prismaAdapter(prisma, { provider: "postgresql" }),
 
   socialProviders: {
@@ -24,15 +26,22 @@ export const auth = betterAuth({
   },
 
   session: {
-    expiresIn: 60 * 60 * 24 * 30, // 30 days
-    updateAge: 60 * 60 * 24,       // refresh if older than 1 day
+    expiresIn: 60 * 60 * 24 * 30,
+    updateAge: 60 * 60 * 24,
     cookieCache: {
       enabled: true,
       maxAge: 60 * 5,
     },
   },
 
-  trustedOrigins: [process.env.NEXT_PUBLIC_APP_URL!],
+  advanced: {
+    useSecureCookies: false,
+  },
+
+  trustedOrigins: [
+    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+    "http://localhost:3000",
+  ],
 })
 
 export type Session = typeof auth.$Infer.Session
