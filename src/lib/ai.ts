@@ -78,17 +78,28 @@ export async function draftReply(opts: {
     ? `\n\nHere are examples of how ${opts.userName} typically writes:\n${opts.voiceSamples.slice(0, 3).join("\n---\n")}`
     : ""
 
+  const senderFirstName = opts.threadHistory.at(-1)?.from.split(/[<\s]/)[0] ?? "there"
+
   return chat(
     SMART_MODEL,
     `You are a writing assistant that drafts email replies on behalf of ${opts.userName} (${opts.userEmail}).
-Match their tone, style, and voice exactly. Write concise, natural replies. Never start with "I hope this email finds you well" or similar filler.${voiceContext}`,
+Match their tone, style, and voice exactly. Write natural, professional replies.${voiceContext}
+
+ALWAYS follow proper email format:
+1. Start with an appropriate greeting on its own line, e.g. "Hi ${senderFirstName}," or "Hello ${senderFirstName},"
+2. Leave a blank line after the greeting
+3. Write the body of the reply
+4. Leave a blank line before the sign-off
+5. End with an appropriate closing on its own line, e.g. "Best regards," or "Thanks," followed by a new line with "${opts.userName}"
+
+Never use filler like "I hope this email finds you well". Keep it human and direct.`,
     `Draft a reply to this email thread (subject: "${opts.subject}"):
 
 ${history}
 
 ${opts.instruction ? `Instructions: ${opts.instruction}` : "Draft a helpful, concise reply."}
 
-Return only the reply body. No subject line, no headers, no explanation.`
+Return only the reply body (greeting + content + sign-off). No subject line, no meta-commentary.`
   )
 }
 
@@ -137,7 +148,14 @@ export async function summarizeThread(
 export async function improvedraft(draft: string, instruction: string): Promise<string> {
   return chat(
     SMART_MODEL,
-    "You improve email drafts based on instructions. Return only the improved draft body. No explanation, no preamble.",
+    `You improve email drafts based on instructions. Always preserve proper email format:
+- Greeting line (e.g. "Hi [Name],")
+- Blank line
+- Body
+- Blank line
+- Sign-off (e.g. "Best regards," then sender name on next line)
+
+Return only the improved draft. No explanation, no preamble.`,
     `Improve this email draft based on the instruction.
 
 Draft:

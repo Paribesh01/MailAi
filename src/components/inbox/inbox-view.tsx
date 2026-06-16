@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Thread, EmailCategory } from "@/types/email"
 import { SplitTabs } from "./split-tabs"
@@ -27,6 +27,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   const [activeCategory, setActiveCategory] = useState<EmailCategory | "ALL">("NEEDS_ATTENTION")
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const hasAutoSynced = useRef(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Thread[] | null>(null)
   const [composeOpen, setComposeOpen] = useState(false)
@@ -43,7 +44,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
     if (openCompose) setComposeOpen(true)
   }, [openCompose])
 
-  const fetchThreads = useCallback(async (p = 1) => {
+  const fetchThreads = useCallback(async (p = 1): Promise<number> => {
     setLoading(p === 1)
     try {
       const params = new URLSearchParams()
@@ -65,32 +66,39 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
       if (p === 1) setThreads(result)
       else setThreads((prev) => [...prev, ...result])
       setHasMore(p < data.pages)
+      return result.length
     } catch {
       toast.error("Failed to load emails")
+      return 0
     } finally {
       setLoading(false)
     }
   }, [activeCategory, isStarred, isSnoozed, isArchived, isFollowups])
 
-  useEffect(() => {
-    setPage(1)
-    setSelectedThread(null)
-    fetchThreads(1)
-  }, [fetchThreads])
-
-  async function handleSync() {
+  const handleSync = useCallback(async () => {
     setSyncing(true)
     try {
       const res = await fetch("/api/sync", { method: "POST" })
       const data = await res.json()
-      toast.success(`Synced ${data.synced} threads`)
+      if (data.synced > 0) toast.success(`Synced ${data.synced} threads`)
       await fetchThreads(1)
     } catch {
       toast.error("Sync failed")
     } finally {
       setSyncing(false)
     }
-  }
+  }, [fetchThreads])
+
+  useEffect(() => {
+    setPage(1)
+    setSelectedThread(null)
+    fetchThreads(1).then((count) => {
+      if (count === 0 && !hasAutoSynced.current) {
+        hasAutoSynced.current = true
+        handleSync()
+      }
+    })
+  }, [fetchThreads, handleSync])
 
   async function handleSearch(q: string) {
     setSearchQuery(q)
@@ -146,6 +154,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
         <EmailList
           threads={displayThreads}
           loading={loading}
+          syncing={syncing}
           selectedId={selectedThread}
           onSelect={setSelectedThread}
           onUpdate={updateThread}

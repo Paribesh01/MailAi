@@ -3,7 +3,7 @@
 import { Thread } from "@/types/email"
 import { cn } from "@/lib/utils"
 import { formatDistanceToNow } from "date-fns"
-import { Star, Bell, Paperclip, Users } from "lucide-react"
+import { Star, Bell, Paperclip, Users, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
@@ -11,6 +11,7 @@ import { toast } from "sonner"
 interface EmailListProps {
   threads: Thread[]
   loading: boolean
+  syncing: boolean
   selectedId: string | null
   onSelect: (id: string) => void
   onUpdate: (id: string, updates: Partial<Thread>) => void
@@ -18,7 +19,7 @@ interface EmailListProps {
   onLoadMore: () => void
 }
 
-export function EmailList({ threads, loading, selectedId, onSelect, onUpdate, hasMore, onLoadMore }: EmailListProps) {
+export function EmailList({ threads, loading, syncing, selectedId, onSelect, onUpdate, hasMore, onLoadMore }: EmailListProps) {
   async function toggleStar(e: React.MouseEvent, thread: Thread) {
     e.stopPropagation()
     const next = !thread.isStarred
@@ -69,10 +70,19 @@ export function EmailList({ threads, loading, selectedId, onSelect, onUpdate, ha
   }
 
   if (!threads.length) {
+    if (syncing) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground py-16">
+          <RefreshCw className="w-6 h-6 animate-spin text-primary/60" />
+          <p className="text-sm font-medium">Syncing your inbox&hellip;</p>
+          <p className="text-xs">Fetching and categorising your emails with AI</p>
+        </div>
+      )
+    }
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-2 text-muted-foreground py-16">
         <p className="text-sm">No emails here</p>
-        <p className="text-xs">Sync your inbox to get started</p>
+        <p className="text-xs">Hit the refresh button to sync your inbox</p>
       </div>
     )
   }
