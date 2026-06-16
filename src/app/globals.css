@@ -128,3 +128,86 @@
     @apply font-sans;
   }
 }
+
+/* ─── Landing page custom animations ─────────────────────────────────────── */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33%       { transform: translateY(-12px) rotate(1deg); }
+  66%       { transform: translateY(-6px) rotate(-1deg); }
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-20px); }
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px 0px oklch(0.55 0.24 264 / 0.3); }
+  50%       { box-shadow: 0 0 60px 10px oklch(0.55 0.24 264 / 0.5); }
+}
+
+@keyframes slide-in-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes orbit {
+  from { transform: rotate(0deg) translateX(120px) rotate(0deg); }
+  to   { transform: rotate(360deg) translateX(120px) rotate(-360deg); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+.animate-float        { animation: float 6s ease-in-out infinite; }
+.animate-float-slow   { animation: float-slow 8s ease-in-out infinite; }
+.animate-float-delay  { animation: float 6s ease-in-out infinite 2s; }
+.animate-gradient     { background-size: 200% 200%; animation: gradient-shift 4s ease infinite; }
+.animate-shimmer      { background-size: 200% auto; animation: shimmer 2.5s linear infinite; }
+.animate-pulse-glow   { animation: pulse-glow 3s ease-in-out infinite; }
+.animate-slide-in-up  { animation: slide-in-up 0.6s ease-out both; }
+.animate-cursor       { animation: blink 1s step-end infinite; }
+
+.gradient-text {
+  background: linear-gradient(135deg, #818cf8, #c084fc, #fb7185);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glass {
+  background: oklch(1 0 0 / 0.05);
+  backdrop-filter: blur(16px);
+  border: 1px solid oklch(1 0 0 / 0.1);
+}
+
+.dark .glass {
+  background: oklch(1 0 0 / 0.04);
+  border: 1px solid oklch(1 0 0 / 0.08);
+}
+
+.glow-purple {
+  box-shadow: 0 0 40px oklch(0.55 0.24 264 / 0.25), 0 0 80px oklch(0.55 0.24 264 / 0.1);
+}
+
+.noise::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  opacity: 0.4;
+}
