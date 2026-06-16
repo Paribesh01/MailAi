@@ -91,6 +91,34 @@ const STEPS = [
   },
 ]
 
+function StepCard({ step, index }: { step: typeof STEPS[0]; index: number }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: "-60px" })
+  const Icon = step.icon
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 40 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ delay: index * 0.15, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+      className="flex flex-col gap-5"
+    >
+      <div className="flex items-center gap-3">
+        <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center">
+          <Icon className="w-5 h-5 text-indigo-400" />
+          <span className="absolute -top-2 -right-2 text-[10px] font-bold text-white/30 bg-white/5 rounded-full w-5 h-5 flex items-center justify-center">
+            {index + 1}
+          </span>
+        </div>
+        <h3 className="text-lg font-semibold text-white">{step.label}</h3>
+      </div>
+      {step.visual}
+      <p className="text-sm text-white/40 leading-relaxed">{step.description}</p>
+    </motion.div>
+  )
+}
+
 export function HowItWorks() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true })
@@ -124,39 +152,9 @@ export function HowItWorks() {
           {/* Connector line */}
           <div className="hidden lg:block absolute top-16 left-1/3 right-1/3 h-px bg-gradient-to-r from-indigo-500/20 via-purple-500/50 to-indigo-500/20" />
 
-          {STEPS.map((step, i) => {
-            const stepRef = useRef<HTMLDivElement>(null)
-            const stepInView = useInView(stepRef, { once: true, margin: "-60px" })
-            const Icon = step.icon
-
-            return (
-              <motion.div
-                key={step.number}
-                ref={stepRef}
-                initial={{ opacity: 0, y: 40 }}
-                animate={stepInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ delay: i * 0.15, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                className="flex flex-col gap-5"
-              >
-                {/* Number + icon */}
-                <div className="flex items-center gap-3">
-                  <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center">
-                    <Icon className="w-5 h-5 text-indigo-400" />
-                    <span className="absolute -top-2 -right-2 text-[10px] font-bold text-white/30 bg-white/5 rounded-full w-5 h-5 flex items-center justify-center">
-                      {i + 1}
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-semibold text-white">{step.label}</h3>
-                </div>
-
-                {/* Visual */}
-                {step.visual}
-
-                {/* Description */}
-                <p className="text-sm text-white/40 leading-relaxed">{step.description}</p>
-              </motion.div>
-            )
-          })}
+          {STEPS.map((step, i) => (
+            <StepCard key={step.number} step={step} index={i} />
+          ))}
         </div>
       </div>
     </section>

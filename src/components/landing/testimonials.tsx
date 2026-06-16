@@ -61,6 +61,43 @@ const TESTIMONIALS = [
   },
 ]
 
+function TestimonialCard({
+  testimonial: t,
+  index,
+}: {
+  testimonial: typeof TESTIMONIALS[0]
+  index: number
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: "-40px" })
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 30 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ delay: (index % 3) * 0.1, duration: 0.6 }}
+      className="break-inside-avoid rounded-2xl p-5 bg-white/[0.03] border border-white/[0.08] hover:border-white/[0.15] hover:bg-white/[0.05] transition-all duration-300"
+    >
+      <div className="flex gap-1 mb-3">
+        {Array.from({ length: t.stars }).map((_, j) => (
+          <Star key={j} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+        ))}
+      </div>
+      <p className="text-sm text-white/60 leading-relaxed mb-4">&ldquo;{t.quote}&rdquo;</p>
+      <div className="flex items-center gap-3">
+        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${t.color} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>
+          {t.avatar}
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-white">{t.name}</p>
+          <p className="text-[10px] text-white/30">{t.role}</p>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
 export function Testimonials() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true })
@@ -93,42 +130,9 @@ export function Testimonials() {
         </div>
 
         <div className="columns-1 md:columns-2 lg:columns-3 gap-5 space-y-5">
-          {TESTIMONIALS.map((t, i) => {
-            const cardRef = useRef<HTMLDivElement>(null)
-            const cardInView = useInView(cardRef, { once: true, margin: "-40px" })
-
-            return (
-              <motion.div
-                key={t.name}
-                ref={cardRef}
-                initial={{ opacity: 0, y: 30 }}
-                animate={cardInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ delay: (i % 3) * 0.1, duration: 0.6 }}
-                className="break-inside-avoid rounded-2xl p-5 bg-white/[0.03] border border-white/8 hover:border-white/15 hover:bg-white/[0.05] transition-all duration-300"
-              >
-                {/* Stars */}
-                <div className="flex gap-1 mb-3">
-                  {Array.from({ length: t.stars }).map((_, j) => (
-                    <Star key={j} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  ))}
-                </div>
-
-                {/* Quote */}
-                <p className="text-sm text-white/60 leading-relaxed mb-4">&ldquo;{t.quote}&rdquo;</p>
-
-                {/* Author */}
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${t.color} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>
-                    {t.avatar}
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-white">{t.name}</p>
-                    <p className="text-[10px] text-white/30">{t.role}</p>
-                  </div>
-                </div>
-              </motion.div>
-            )
-          })}
+          {TESTIMONIALS.map((t, i) => (
+            <TestimonialCard key={t.name} testimonial={t} index={i} />
+          ))}
         </div>
       </div>
     </section>

@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { motion, useScroll, useTransform } from "framer-motion"
+import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Sparkles, Star, Zap } from "lucide-react"
 
@@ -40,10 +40,10 @@ function TypewriterWord() {
 }
 
 const FLOATING_EMAILS = [
-  { label: "Meeting at 3pm", from: "Sarah Chen", badge: "Needs attention", color: "from-red-500/20 to-pink-500/20", border: "border-red-500/20", delay: 0 },
-  { label: "Q4 Report Ready", from: "Analytics Team", badge: "Can wait", color: "from-amber-500/20 to-yellow-500/20", border: "border-amber-500/20", delay: 1.5 },
-  { label: "Newsletter #42", from: "TechCrunch", badge: "Ignore", color: "from-slate-500/10 to-slate-400/10", border: "border-slate-500/20", delay: 0.8 },
-  { label: "AI draft ready ✨", from: "MailAI", badge: "Draft", color: "from-indigo-500/20 to-purple-500/20", border: "border-indigo-500/30", delay: 2.2 },
+  { label: "Meeting at 3pm", from: "Sarah Chen", badge: "Needs attention", color: "from-red-500/20 to-pink-500/20", border: "border-red-500/20", delay: "0s" },
+  { label: "Q4 Report Ready", from: "Analytics Team", badge: "Can wait", color: "from-amber-500/20 to-yellow-500/20", border: "border-amber-500/20", delay: "1.5s" },
+  { label: "Newsletter #42", from: "TechCrunch", badge: "Ignore", color: "from-slate-500/10 to-slate-400/10", border: "border-slate-500/20", delay: "0.8s" },
+  { label: "AI draft ready ✨", from: "MailAI", badge: "Draft", color: "from-indigo-500/20 to-purple-500/20", border: "border-indigo-500/30", delay: "2.2s" },
 ]
 
 const BADGE_COLORS: Record<string, string> = {
@@ -53,29 +53,16 @@ const BADGE_COLORS: Record<string, string> = {
   "Draft":           "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30",
 }
 
+const CARD_POSITIONS = ["top-0 left-0", "top-0 right-0", "bottom-10 left-4", "bottom-4 right-4"]
+
 export function Hero() {
-  const ref = useRef<HTMLDivElement>(null)
-  const { scrollY } = useScroll()
-  const y = useTransform(scrollY, [0, 500], [0, 120])
-  const opacity = useTransform(scrollY, [0, 400], [1, 0])
-
   return (
-    <section
-      ref={ref}
-      className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-[#0a0a0f] text-white"
-    >
-      {/* Background blobs */}
+    <section className="relative min-h-screen flex flex-col items-center justify-center bg-[#0a0a0f] text-white">
+      {/* Background blobs — pure CSS animations, no scroll hooks */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <motion.div
-          style={{ y }}
-          className="absolute -top-40 -right-40 w-[700px] h-[700px] rounded-full bg-gradient-to-br from-indigo-600/20 to-purple-600/20 blur-[120px]"
-        />
-        <motion.div
-          style={{ y: useTransform(scrollY, [0, 500], [0, 60]) }}
-          className="absolute -bottom-40 -left-40 w-[600px] h-[600px] rounded-full bg-gradient-to-tr from-violet-600/15 to-pink-600/15 blur-[120px]"
-        />
+        <div className="absolute -top-40 -right-40 w-[700px] h-[700px] rounded-full bg-gradient-to-br from-indigo-600/20 to-purple-600/20 blur-[120px] animate-float-slow" />
+        <div className="absolute -bottom-40 -left-40 w-[600px] h-[600px] rounded-full bg-gradient-to-tr from-violet-600/15 to-pink-600/15 blur-[120px] animate-float-slow" style={{ animationDelay: "3s" }} />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] rounded-full bg-indigo-600/10 blur-[80px]" />
-
         {/* Grid */}
         <div
           className="absolute inset-0 opacity-[0.03]"
@@ -86,7 +73,7 @@ export function Hero() {
         />
       </div>
 
-      <motion.div style={{ opacity }} className="relative z-10 w-full max-w-6xl mx-auto px-6 pt-28 pb-20">
+      <div className="relative z-10 w-full max-w-6xl mx-auto px-6 pt-28 pb-20">
         {/* Badge */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -162,7 +149,7 @@ export function Hero() {
           No credit card required · Free forever for personal use · 2-minute setup
         </motion.p>
 
-        {/* Floating email cards */}
+        {/* Floating email cards + app mockup */}
         <div className="relative mt-20 h-[380px] w-full max-w-4xl mx-auto">
           {/* Center app mockup */}
           <motion.div
@@ -171,9 +158,7 @@ export function Hero() {
             transition={{ delay: 0.5, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
             className="absolute inset-x-16 top-8 bottom-0 rounded-2xl overflow-hidden border border-white/10 shadow-2xl animate-pulse-glow"
           >
-            {/* App chrome */}
             <div className="h-full bg-[#111118] flex flex-col">
-              {/* Top bar */}
               <div className="flex items-center gap-1.5 px-4 py-3 border-b border-white/5">
                 <div className="w-3 h-3 rounded-full bg-red-500/60" />
                 <div className="w-3 h-3 rounded-full bg-amber-500/60" />
@@ -182,9 +167,7 @@ export function Hero() {
                   <span className="text-[9px] text-white/30">mailai.app/inbox</span>
                 </div>
               </div>
-              {/* Inbox content */}
               <div className="flex flex-1 overflow-hidden">
-                {/* Sidebar */}
                 <div className="w-10 border-r border-white/5 flex flex-col items-center gap-3 py-3">
                   {["M", "★", "⏱", "🗂"].map((icon, i) => (
                     <div key={i} className={`w-6 h-6 rounded-lg flex items-center justify-center text-[9px] ${i === 0 ? "bg-indigo-500/30 text-indigo-400" : "text-white/20"}`}>
@@ -192,23 +175,19 @@ export function Hero() {
                     </div>
                   ))}
                 </div>
-                {/* Email list */}
                 <div className="flex-1 overflow-hidden">
-                  {/* Tabs */}
                   <div className="flex border-b border-white/5 text-[9px]">
                     <span className="px-3 py-2 text-indigo-400 border-b border-indigo-500">Needs attention</span>
                     <span className="px-3 py-2 text-white/30">Can wait</span>
                     <span className="px-3 py-2 text-white/30">Ignore</span>
                   </div>
-                  {/* Mock emails */}
                   {[
                     { name: "Sarah Chen", subject: "Q4 Review — need your input", time: "2m", dot: true },
                     { name: "David Park", subject: "Re: Partnership proposal", time: "1h", dot: false },
                     { name: "Investor Update", subject: "Monthly metrics deck", time: "3h", dot: true },
                   ].map((e, i) => (
                     <div key={i} className={`flex gap-2 px-3 py-2 border-b border-white/5 ${i === 0 ? "bg-indigo-500/5" : ""}`}>
-                      {e.dot && <span className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />}
-                      {!e.dot && <span className="mt-1 w-1.5 h-1.5 shrink-0" />}
+                      {e.dot ? <span className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" /> : <span className="mt-1 w-1.5 h-1.5 shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between">
                           <span className="text-[9px] font-semibold text-white/80">{e.name}</span>
@@ -223,41 +202,35 @@ export function Hero() {
             </div>
           </motion.div>
 
-          {/* Floating cards */}
-          {FLOATING_EMAILS.map((email, i) => {
-            const positions = [
-              "top-0 left-0",
-              "top-0 right-0",
-              "bottom-10 left-4",
-              "bottom-4 right-4",
-            ]
-            return (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ delay: 0.7 + email.delay * 0.3, duration: 0.5 }}
-                className={`absolute ${positions[i]} w-48`}
-                style={{ animation: `float ${5 + i}s ease-in-out infinite ${email.delay}s` }}
+          {/* Floating cards — CSS float animation only, no framer opacity conflict */}
+          {FLOATING_EMAILS.map((email, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, scale: 0.8, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ delay: 0.7 + i * 0.15, duration: 0.5 }}
+              className={`absolute ${CARD_POSITIONS[i]} w-48`}
+            >
+              <div
+                className={`rounded-xl p-3 bg-gradient-to-br ${email.color} border ${email.border} backdrop-blur-sm shadow-xl animate-float`}
+                style={{ animationDelay: email.delay, animationDuration: `${5 + i}s` }}
               >
-                <div className={`rounded-xl p-3 bg-gradient-to-br ${email.color} border ${email.border} backdrop-blur-sm shadow-xl`}>
-                  <div className="flex items-start justify-between mb-1.5">
-                    <span className="text-[10px] font-semibold text-white/90 leading-tight">{email.label}</span>
-                    <Zap className="w-2.5 h-2.5 text-white/30 shrink-0 mt-0.5" />
-                  </div>
-                  <p className="text-[9px] text-white/40 mb-2">{email.from}</p>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${BADGE_COLORS[email.badge]}`}>
-                    {email.badge}
-                  </span>
+                <div className="flex items-start justify-between mb-1.5">
+                  <span className="text-[10px] font-semibold text-white/90 leading-tight">{email.label}</span>
+                  <Zap className="w-2.5 h-2.5 text-white/30 shrink-0 mt-0.5" />
                 </div>
-              </motion.div>
-            )
-          })}
+                <p className="text-[9px] text-white/40 mb-2">{email.from}</p>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${BADGE_COLORS[email.badge]}`}>
+                  {email.badge}
+                </span>
+              </div>
+            </motion.div>
+          ))}
         </div>
-      </motion.div>
+      </div>
 
-      {/* Bottom fade */}
-      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+      {/* Bottom fade into the next dark section */}
+      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#0a0a0f] to-transparent pointer-events-none" />
     </section>
   )
 }
