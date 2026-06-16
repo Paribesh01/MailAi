@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { signOut } from "@/lib/auth-client"
 import {
-  Inbox, Star, Clock, Archive, Bell, Settings, PenSquare, Mail, BarChart2, LogOut,
+  Inbox, Star, Clock, Archive, Bell, Settings, PenSquare, Mail, BarChart2, LogOut, Send,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -18,6 +18,7 @@ interface SidebarProps {
 
 const NAV = [
   { href: "/inbox", icon: Inbox, label: "Inbox", color: "text-indigo-400" },
+  { href: "/sent", icon: Send, label: "Sent", color: "text-sky-400" },
   { href: "/inbox?starred=true", icon: Star, label: "Starred", color: "text-amber-400" },
   { href: "/inbox?snoozed=true", icon: Clock, label: "Snoozed", color: "text-violet-400" },
   { href: "/inbox?archived=true", icon: Archive, label: "Archived", color: "text-slate-400" },
@@ -71,9 +72,11 @@ export function Sidebar({ user }: SidebarProps) {
 
       {/* Nav */}
       {NAV.map(({ href, icon: Icon, label, color }) => {
-        const active = pathname === "/inbox" && href === "/inbox"
-          ? true
-          : pathname + (typeof window !== "undefined" ? window.location.search : "") === href
+        const active = href === "/inbox"
+          ? pathname === "/inbox" && (typeof window !== "undefined" ? !window.location.search : true)
+          : href.startsWith("/inbox?")
+          ? pathname + (typeof window !== "undefined" ? window.location.search : "") === href
+          : pathname === href
         return (
           <Tooltip key={label}>
             <TooltipTrigger render={
