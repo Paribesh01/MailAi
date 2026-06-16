@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Sparkles, Star, Zap } from "lucide-react"
+import { ArrowRight, Sparkles, Zap } from "lucide-react"
 
 const WORDS = ["cluttered.", "overwhelming.", "endless.", "chaotic."]
 
@@ -83,10 +83,7 @@ export function Hero() {
         >
           <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium glass border border-indigo-500/30 text-indigo-300 shadow-lg shadow-indigo-500/10">
             <Sparkles className="w-3 h-3" />
-            Powered by Claude AI · Y Combinator-backed
-            <span className="flex items-center gap-1 text-white/60">
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> 4.9
-            </span>
+            AI-powered inbox management
           </span>
         </motion.div>
 
@@ -109,7 +106,7 @@ export function Hero() {
           className="text-center text-lg md:text-xl text-white/50 max-w-2xl mx-auto mb-10 leading-relaxed"
         >
           MailAI splits your inbox into what needs attention, what can wait, and
-          what to ignore — then drafts replies in your voice using Claude AI.
+          what to ignore — then drafts replies in your voice.
         </motion.p>
 
         {/* CTAs */}
