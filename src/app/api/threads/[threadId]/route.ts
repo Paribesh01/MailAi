@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
-import { archiveThread, starThread, deleteThread, markAsRead } from "@/lib/gmail"
+import { archiveThread, starThread, deleteThread, markAsRead, fetchThread } from "@/lib/gmail"
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ threadId: string }> }) {
   try {
@@ -18,6 +18,72 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ thread
     })
 
     if (!thread) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    // Live-fetch from Gmail to pick up any replies that arrived since last sync
+    try {
+      const live = await fetchThread(session.user.id, thread.gmailThreadId)
+      const knownIds = new Set(thread.emails.map((e) => e.gmailMessageId))
+      const newMessages = live.messages.filter((m) => !knownIds.has(m.gmailMessageId))
+
+      if (newMessages.length > 0) {
+        await Promise.all(
+          newMessages.map((msg) =>
+            prisma.email.create({
+              data: {
+                gmailMessageId: msg.gmailMessageId,
+                threadId: thread.id,
+                from: msg.from,
+                fromName: msg.fromName,
+                to: msg.to,
+                cc: msg.cc,
+                bcc: msg.bcc,
+                subject: msg.subject,
+                bodyHtml: msg.bodyHtml,
+                bodyText: msg.bodyText,
+                snippet: msg.snippet,
+                isRead: msg.isRead,
+                internalDate: msg.internalDate,
+                headers: msg.headers as any,
+                attachments: msg.attachments as any,
+              },
+            })
+          )
+        )
+        // Update thread metadata to reflect the latest state
+        await prisma.thread.update({
+          where: { id: thread.id },
+          data: {
+            messageCount: live.messageCount,
+            snippet: live.snippet,
+            lastMessageAt: live.lastMessageAt,
+            participantEmails: live.participantEmails,
+            participantNames: live.participantNames,
+          },
+        })
+        // Re-read with the newly inserted messages
+        const updated = await prisma.thread.findFirst({
+          where: { id: threadId },
+          include: {
+            emails: { orderBy: { internalDate: "asc" } },
+            labels: { include: { label: true } },
+            followUps: { orderBy: { scheduledFor: "asc" } },
+          },
+        })
+        if (updated) {
+          const unread = updated.emails.find((e) => !e.isRead)
+          if (unread) {
+            await Promise.all([
+              markAsRead(session.user.id, unread.gmailMessageId),
+              prisma.email.update({ where: { id: unread.id }, data: { isRead: true } }),
+              prisma.thread.update({ where: { id: threadId }, data: { isRead: true } }),
+            ])
+          }
+          return NextResponse.json({ ...updated, isRead: true })
+        }
+      }
+    } catch {
+      // Gmail fetch failed (e.g. token expired) — fall through and return what we have in DB
+    }
 
     // Mark first unread message as read
     const unreadEmail = thread.emails.find((e) => !e.isRead)

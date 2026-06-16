@@ -58,6 +58,39 @@ export async function POST(req: NextRequest) {
       threadId: gmailThreadId,
     })
 
+    // Persist the sent email so the thread panel can show it immediately
+    if (gmailThreadId) {
+      const thread = await prisma.thread.findFirst({
+        where: { gmailThreadId, userId: session.user.id },
+      })
+      if (thread) {
+        const plainText = html.replace(/<[^>]*>/g, "")
+        await prisma.email.create({
+          data: {
+            gmailMessageId: result.id ?? `sent-${Date.now()}`,
+            threadId: thread.id,
+            from: session.user.email,
+            fromName: session.user.name ?? session.user.email,
+            to: Array.isArray(to) ? to : [to],
+            cc: [],
+            bcc: [],
+            subject,
+            bodyHtml: html,
+            bodyText: plainText,
+            snippet: plainText.slice(0, 120),
+            isRead: true,
+            internalDate: new Date(),
+            headers: {} as any,
+            attachments: [] as any,
+          },
+        })
+        await prisma.thread.update({
+          where: { id: thread.id },
+          data: { messageCount: { increment: 1 }, lastMessageAt: new Date() },
+        })
+      }
+    }
+
     return NextResponse.json({ messageId: result.id })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })

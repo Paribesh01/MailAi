@@ -14,9 +14,10 @@ interface AiDraftPanelProps {
   thread: ThreadDetail
   userEmail: string
   onClose: () => void
+  onSent?: () => void
 }
 
-export function AiDraftPanel({ threadId, thread, userEmail, onClose }: AiDraftPanelProps) {
+export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent }: AiDraftPanelProps) {
   const lastEmail = thread.emails[thread.emails.length - 1]
   const replyTo = lastEmail?.from ?? ""
 
@@ -79,7 +80,7 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose }: AiDraftPa
         }),
       })
       toast.success("Sent!")
-      onClose()
+      onSent ? onSent() : onClose()
     } catch {
       toast.error("Failed to send")
     } finally {

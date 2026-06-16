@@ -35,19 +35,23 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
   const [followUpOpen, setFollowUpOpen] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
 
+  const refetchThread = async (expandLastId?: string) => {
+    try {
+      const data = await fetch(`/api/threads/${threadId}`).then((r) => r.json())
+      setThread(data)
+      if (data.emails?.length) {
+        const lastId = data.emails[data.emails.length - 1].id
+        setExpandedEmails((prev) => new Set([...prev, expandLastId ?? lastId]))
+      }
+    } catch {
+      toast.error("Failed to load thread")
+    }
+  }
+
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/threads/${threadId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setThread(data)
-        // Auto-expand last email
-        if (data.emails?.length) {
-          setExpandedEmails(new Set([data.emails[data.emails.length - 1].id]))
-        }
-      })
-      .catch(() => toast.error("Failed to load thread"))
-      .finally(() => setLoading(false))
+    refetchThread().finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId])
 
   async function handleStar() {
@@ -270,6 +274,10 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
           thread={thread}
           userEmail={userEmail}
           onClose={() => setDraftOpen(false)}
+          onSent={async () => {
+            setDraftOpen(false)
+            await refetchThread()
+          }}
         />
       )}
 
