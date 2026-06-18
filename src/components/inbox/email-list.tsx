@@ -3,7 +3,7 @@
 import { Thread } from "@/types/email"
 import { cn } from "@/lib/utils"
 import { formatDistanceToNow } from "date-fns"
-import { Star, Bell, Paperclip, Users, RefreshCw } from "lucide-react"
+import { Star, Bell, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
@@ -67,15 +67,15 @@ export function EmailList({
 
   if (loading) {
     return (
-      <div className="flex-1 overflow-y-auto divide-y">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="px-4 py-3 space-y-2">
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="bg-white rounded-xl shadow-[0_1px_3px_rgba(45,42,38,0.06)] p-4 space-y-2">
             <div className="flex items-center gap-2">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-3 w-12 ml-auto" />
+              <Skeleton className="h-3 w-24 bg-taupe" />
+              <Skeleton className="h-3 w-12 ml-auto bg-taupe" />
             </div>
-            <Skeleton className="h-3 w-48" />
-            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-48 bg-taupe" />
+            <Skeleton className="h-3 w-full bg-taupe" />
           </div>
         ))}
       </div>
@@ -85,16 +85,20 @@ export function EmailList({
   if (!threads.length) {
     if (syncing) {
       return (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground py-16">
-          <RefreshCw className="w-6 h-6 animate-spin text-primary/60" />
-          <p className="text-sm font-medium">Syncing your inbox&hellip;</p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-stone-warm py-16">
+          <RefreshCw className="w-6 h-6 animate-spin text-slate-blue/60" />
+          <p className="text-sm font-medium text-espresso">Syncing your inbox…</p>
           <p className="text-xs">Fetching and categorising your emails with AI</p>
         </div>
       )
     }
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-muted-foreground py-16">
-        <p className="text-sm">No emails here</p>
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-stone-warm py-16">
+        <svg className="w-12 h-12 text-tan mb-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+          <rect width="20" height="16" x="2" y="4" rx="2" />
+          <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+        </svg>
+        <p className="text-sm text-espresso">No emails here</p>
         <p className="text-xs">Hit the refresh button to sync your inbox</p>
       </div>
     )
@@ -103,7 +107,7 @@ export function EmailList({
   const anySelected = selectedIds.size > 0
 
   return (
-    <div className="flex-1 overflow-y-auto divide-y">
+    <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
       {threads.map((thread) => (
         <ThreadRow
           key={thread.id}
@@ -118,8 +122,8 @@ export function EmailList({
         />
       ))}
       {hasMore && (
-        <div className="p-4 flex justify-center">
-          <Button variant="ghost" size="sm" onClick={onLoadMore}>
+        <div className="py-4 flex justify-center">
+          <Button variant="ghost" size="sm" onClick={onLoadMore} className="text-stone-warm">
             Load more
           </Button>
         </div>
@@ -149,7 +153,6 @@ function ThreadRow({
 }) {
   const senderName =
     thread.participantNames[0] || thread.participantEmails[0]?.split("@")[0] || "Unknown"
-  const extraCount = thread.participantEmails.length - 1
 
   const timeAgo = formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true })
     .replace("about ", "")
@@ -157,32 +160,14 @@ function ThreadRow({
 
   const category = thread.category
 
-  const isIgnore = category === "IGNORE"
-
-  const borderClass = isChecked
-    ? "border-l-[3px] border-indigo-500"
-    : category === "NEEDS_ATTENTION"
-    ? "border-l-[3px] border-rose-500"
-    : category === "CAN_WAIT"
-    ? "border-l-[3px] border-amber-500"
-    : "border-l-[3px] border-transparent"
-
-  const rowBg = selected
-    ? "bg-indigo-500/10"
-    : isChecked
-    ? "bg-indigo-500/5"
-    : category === "NEEDS_ATTENTION" && !thread.isRead
-    ? "bg-rose-500/[0.04]"
-    : category === "CAN_WAIT" && !thread.isRead
-    ? "bg-amber-500/[0.04]"
-    : ""
-
-  const categoryDot =
-    category === "NEEDS_ATTENTION" ? (
-      <span className="inline-block w-2 h-2 rounded-full bg-rose-500 shrink-0 mt-px ring-2 ring-rose-500/20" />
-    ) : category === "CAN_WAIT" ? (
-      <span className="inline-block w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-px ring-2 ring-amber-500/20" />
-    ) : null
+  const borderColor =
+    isChecked
+      ? "#6b7db3"
+      : category === "NEEDS_ATTENTION"
+      ? "#e0745a"
+      : category === "CAN_WAIT"
+      ? "#7a9e7e"
+      : "transparent"
 
   function handleCheckboxClick(e: React.MouseEvent) {
     e.stopPropagation()
@@ -192,27 +177,118 @@ function ThreadRow({
   return (
     <div
       onClick={onSelect}
+      onMouseEnter={(e) => {
+        if (!selected && !isChecked) {
+          (e.currentTarget as HTMLElement).style.borderLeftColor = borderColor
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!selected && !isChecked) {
+          (e.currentTarget as HTMLElement).style.borderLeftColor = "transparent"
+        }
+      }}
       className={cn(
-        "group relative flex items-start gap-3 px-4 py-3 cursor-pointer transition-all duration-150",
-        borderClass,
-        rowBg,
-        !selected && !isChecked && !rowBg && "hover:bg-muted/40",
-        isIgnore && "opacity-50"
+        "group relative bg-white rounded-xl cursor-pointer transition-all duration-150 p-4",
+        "shadow-[0_1px_3px_rgba(45,42,38,0.06)] hover:shadow-[0_4px_12px_rgba(45,42,38,0.1)]",
+        category === "IGNORE" && !selected && "opacity-60"
       )}
+      style={{
+        borderLeft: `3px solid ${selected || isChecked ? borderColor : "transparent"}`,
+      }}
     >
-      {/* Unread dot */}
-      {!thread.isRead && (
-        <span className={cn(
-          "absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full",
-          category === "NEEDS_ATTENTION" ? "bg-rose-500" : category === "CAN_WAIT" ? "bg-amber-500" : "bg-indigo-500"
-        )} />
-      )}
+      <div className="flex gap-3">
+        {/* Left column: unread dot + star */}
+        <div className="w-7 flex flex-col items-center pt-0.5 gap-2 shrink-0">
+          {!thread.isRead ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-coral shrink-0" />
+          ) : (
+            <span className="w-1.5 h-1.5 shrink-0" />
+          )}
+          <button
+            onClick={onStar}
+            className="cursor-pointer p-0.5 transition-colors"
+          >
+            <Star
+              className={cn(
+                "w-[17px] h-[17px] transition-colors",
+                thread.isStarred
+                  ? "text-sand fill-sand"
+                  : "text-tan group-hover:text-sand/70"
+              )}
+            />
+          </button>
+        </div>
 
-      {/* Bulk select checkbox — visible on hover or when any row is selected */}
+        {/* Right column: content */}
+        <div className="flex-1 min-w-0">
+          {/* Row 1: sender + time */}
+          <div className="flex items-center justify-between mb-1">
+            <span className={cn(
+              "text-[15px] truncate",
+              !thread.isRead ? "font-semibold text-espresso" : "font-medium text-espresso"
+            )}>
+              {senderName}
+              {thread.messageCount > 1 && (
+                <span className="text-xs text-stone-warm font-normal ml-1.5">({thread.messageCount})</span>
+              )}
+            </span>
+            <span className="text-xs font-medium text-stone-warm ml-2 shrink-0 tracking-wide">
+              {timeAgo}
+            </span>
+          </div>
+
+          {/* Row 2: subject */}
+          <p className={cn(
+            "text-sm truncate mb-1",
+            !thread.isRead ? "font-semibold text-espresso" : "text-espresso/80"
+          )}>
+            {thread.subject}
+          </p>
+
+          {/* Row 3: AI summary */}
+          <div className="flex items-start gap-1.5">
+            <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 bg-blue-light text-slate-blue text-[11px] font-medium tracking-wide rounded">
+              AI
+            </span>
+            <p className="text-sm text-stone-warm truncate leading-relaxed">
+              {thread.aiSummary || thread.snippet}
+            </p>
+          </div>
+
+          {/* Labels */}
+          {thread.labels.length > 0 && (
+            <div className="flex gap-1 flex-wrap mt-1.5">
+              {thread.labels.slice(0, 3).map(({ label }) => (
+                <span
+                  key={label.id}
+                  className="inline-block h-4 px-1.5 rounded text-[10px] font-medium"
+                  style={{ backgroundColor: label.color + "22", color: label.color }}
+                >
+                  {label.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Hover actions: archive + follow-up */}
+      <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {thread.hasFollowUp && <Bell className="w-3.5 h-3.5 text-sand" />}
+        <button
+          onClick={onArchive}
+          className="w-7 h-7 flex items-center justify-center rounded-lg bg-taupe/60 text-stone-warm text-xs font-medium hover:bg-taupe transition-colors"
+          title="Archive"
+        >
+          E
+        </button>
+      </div>
+
+      {/* Bulk select checkbox */}
       {onToggleSelect && (
         <div
           className={cn(
-            "absolute left-4 top-1/2 -translate-y-1/2 z-10 transition-opacity",
+            "absolute top-3 left-3 z-10 transition-opacity",
             showCheckbox || isChecked ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           )}
           onClick={handleCheckboxClick}
@@ -221,93 +297,10 @@ function ThreadRow({
             type="checkbox"
             checked={isChecked}
             onChange={() => {}}
-            className="w-3.5 h-3.5 rounded accent-primary cursor-pointer"
+            className="w-3.5 h-3.5 rounded cursor-pointer accent-slate-blue"
           />
         </div>
       )}
-
-      <div
-        className={cn(
-          "flex-1 min-w-0 space-y-0.5 transition-all",
-          (showCheckbox || isChecked) && onToggleSelect ? "pl-5" : ""
-        )}
-      >
-        {/* Row 1: Sender + time */}
-        <div className="flex items-center gap-1">
-          {categoryDot}
-          <span
-            className={cn(
-              "text-sm truncate",
-              !thread.isRead ? "font-semibold" : "font-medium",
-              isIgnore && "text-muted-foreground"
-            )}
-          >
-            {senderName}
-          </span>
-          {extraCount > 0 && (
-            <span className="flex items-center gap-0.5 text-xs text-muted-foreground shrink-0">
-              <Users className="w-3 h-3" />
-              {extraCount}
-            </span>
-          )}
-          {thread.messageCount > 1 && (
-            <span className="text-xs text-muted-foreground shrink-0">({thread.messageCount})</span>
-          )}
-          <span className="ml-auto text-xs text-muted-foreground shrink-0">{timeAgo}</span>
-        </div>
-
-        {/* Row 2: Subject */}
-        <p
-          className={cn(
-            "text-sm truncate",
-            !thread.isRead ? "font-medium" : "text-foreground/80",
-            isIgnore && "text-muted-foreground"
-          )}
-        >
-          {thread.subject}
-        </p>
-
-        {/* Row 3: Snippet + badges */}
-        <div className="flex items-center gap-1">
-          <p className="text-xs text-muted-foreground truncate flex-1">
-            {thread.aiSummary || thread.snippet}
-          </p>
-          <div className="flex items-center gap-1 shrink-0">
-            {thread.hasFollowUp && <Bell className="w-3 h-3 text-amber-500" />}
-            {(thread._count?.emails ?? thread.messageCount) > 1 && (
-              <Paperclip className="w-3 h-3 text-muted-foreground" />
-            )}
-          </div>
-        </div>
-
-        {/* Labels */}
-        {thread.labels.length > 0 && (
-          <div className="flex gap-1 flex-wrap">
-            {thread.labels.slice(0, 3).map(({ label }) => (
-              <span
-                key={label.id}
-                className="inline-block h-4 px-1.5 rounded text-[10px] font-medium"
-                style={{ backgroundColor: label.color + "22", color: label.color }}
-              >
-                {label.name}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Hover actions */}
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <button
-          onClick={onStar}
-          className={cn("p-1 rounded hover:bg-muted", thread.isStarred && "text-amber-500")}
-        >
-          <Star className="w-3.5 h-3.5" fill={thread.isStarred ? "currentColor" : "none"} />
-        </button>
-        <button onClick={onArchive} className="p-1 rounded hover:bg-muted text-muted-foreground text-xs font-medium">
-          E
-        </button>
-      </div>
     </div>
   )
 }

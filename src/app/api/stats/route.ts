@@ -80,13 +80,11 @@ export async function GET(_req: NextRequest) {
       Math.round((totalThreads / 30) * 100) / 100
 
     return NextResponse.json({
-      totalThreads,
-      byCategory,
-      unreadCount,
-      starredCount,
-      archivedCount,
-      todayCount,
-      weekCount,
+      totalEmails: totalThreads,
+      categories: byCategory,
+      unreadEmails: unreadCount,
+      starredEmails: starredCount,
+      todayEmails: todayCount,
       topSenders,
       noiseRatio,
       avgDailyEmails,

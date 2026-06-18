@@ -148,41 +148,41 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
   }
 
   return (
-    <div className="border-t bg-card shrink-0">
+    <div className="border-t border-taupe bg-white shrink-0 shadow-[0_-4px_16px_rgba(45,42,38,0.06)]">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b">
-        <Sparkles className="w-4 h-4 text-primary" />
-        <span className="text-sm font-medium">AI Draft</span>
-        <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" onClick={onClose}>
-          <X className="w-3.5 h-3.5" />
-        </Button>
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-taupe">
+        <Sparkles className="w-4 h-4 text-slate-blue" />
+        <span className="text-[15px] font-semibold text-espresso">AI Draft</span>
+        <button onClick={onClose} className="ml-auto w-7 h-7 flex items-center justify-center rounded hover:bg-taupe/40 transition-colors">
+          <X className="w-[17px] h-[17px] text-stone-warm" />
+        </button>
       </div>
 
       <div className="px-4 py-3 space-y-3">
         {/* To field */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground w-4">To</span>
+          <span className="text-xs text-stone-warm w-4 font-medium">To</span>
           <Input
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="h-7 text-sm"
+            className="h-8 text-sm border-taupe focus:border-sand focus:ring-sand/15"
             placeholder="recipient@example.com"
           />
         </div>
 
         {/* Tone selector */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-muted-foreground mr-0.5">Tone:</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-stone-warm font-medium">Tone:</span>
           {TONE_OPTIONS.map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setTone(t)}
               className={cn(
-                "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors duration-150 select-none",
+                "px-3 py-1 rounded-full text-[11px] font-medium tracking-wide border transition-colors duration-150 select-none",
                 tone === t
-                  ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
-                  : "bg-transparent border-border text-muted-foreground hover:border-indigo-400 hover:text-indigo-600"
+                  ? "bg-slate-blue border-slate-blue text-white"
+                  : "bg-white border-taupe text-stone-warm hover:bg-blue-light/50"
               )}
             >
               {t}
@@ -238,12 +238,10 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
             )}
           </div>
 
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5 shrink-0"
+          <button
             onClick={draft ? improveDraft : generateDraft}
             disabled={generating || improving}
+            className="h-8 px-3.5 rounded-[10px] bg-espresso text-white text-xs font-semibold flex items-center gap-1.5 shrink-0 hover:bg-espresso/85 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {generating || improving ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -252,7 +250,7 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
             ) : (
               <><Sparkles className="w-3.5 h-3.5" /> Generate</>
             )}
-          </Button>
+          </button>
         </div>
 
         {/* Smart reply chips — shown only when draft is empty */}
@@ -268,31 +266,34 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={generating ? "Generating..." : "Your reply will appear here..."}
-          className={cn("min-h-[140px] text-sm resize-none", generating && "opacity-60")}
+          className={cn("min-h-[120px] text-sm resize-y border-taupe focus:border-sand focus:ring-sand/15 text-espresso placeholder:text-tan", generating && "opacity-60")}
           disabled={generating}
         />
 
         {/* Actions */}
-        <div className="flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-xs"
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-stone-warm hover:text-espresso transition-colors"
+          >
+            Cancel
+          </button>
+          <button
             onClick={generateDraft}
             disabled={generating}
+            className="h-9 px-3 rounded-[10px] border border-taupe text-stone-warm text-xs font-medium flex items-center gap-1.5 hover:border-stone-warm transition-colors disabled:opacity-50"
           >
             <RefreshCw className={cn("w-3.5 h-3.5", generating && "animate-spin")} />
             Regenerate
-          </Button>
-          <Button
-            size="sm"
-            className="gap-1.5"
+          </button>
+          <button
             onClick={sendEmail}
             disabled={!draft.trim() || sending}
+            className="h-9 px-4 rounded-[10px] bg-sage text-white text-xs font-semibold flex items-center gap-2 hover:bg-sage/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-3.5 h-3.5" />
-            {sending ? "Sending..." : "Send"}
-          </Button>
+            {sending ? "Sending…" : "Send"}
+          </button>
         </div>
       </div>
     </div>

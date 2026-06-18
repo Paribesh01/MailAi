@@ -14,6 +14,7 @@ import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
+import { ChatAssistant } from "./chat-assistant"
 
 interface InboxViewProps {
   userName: string
@@ -210,14 +211,14 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
       {/* Left pane */}
       <div className={cn("flex flex-col border-r", selectedThread ? "w-96 shrink-0" : "flex-1")}>
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-transparent">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-taupe bg-cream">
           <SearchBar value={searchQuery} onChange={handleSearch} />
           <Button
             variant="ghost"
             size="icon"
             onClick={handleSync}
             disabled={syncing}
-            className="shrink-0 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10"
+            className="shrink-0 text-stone-warm hover:text-espresso hover:bg-sand-light/50"
           >
             <RefreshCw className={cn("w-4 h-4", syncing && "animate-spin")} />
           </Button>
@@ -226,7 +227,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
         {/* New emails banner */}
         {newEmailsBanner && (
           <button
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 text-primary text-xs font-medium hover:bg-primary/15 transition-colors border-b"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-light text-slate-blue text-xs font-medium hover:bg-blue-light/70 transition-colors border-b border-taupe"
             onClick={() => { setNewEmailsBanner(false); fetchThreads(1) }}
           >
             <RefreshCw className="w-3 h-3" />
@@ -287,6 +288,8 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
         onClose={() => { setComposeOpen(false); router.replace("/inbox") }}
         userEmail={userEmail}
       />
+
+      <ChatAssistant />
     </div>
   )
 }

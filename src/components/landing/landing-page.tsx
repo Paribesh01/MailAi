@@ -10,7 +10,7 @@ import { Footer } from "./footer"
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#0a0a0f]">
+    <div className="min-h-screen bg-cream">
       <Navbar />
       <Hero />
       <Stats />

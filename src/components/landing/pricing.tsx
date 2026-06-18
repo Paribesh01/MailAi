@@ -4,7 +4,6 @@ import { useRef } from "react"
 import Link from "next/link"
 import { motion, useInView } from "framer-motion"
 import { Check, Sparkles } from "lucide-react"
-import { Button } from "@/components/ui/button"
 
 const PLANS = [
   {
@@ -65,15 +64,13 @@ export function Pricing() {
   const inView = useInView(ref, { once: true })
 
   return (
-    <section id="pricing" className="py-32 bg-[#0a0a0f] relative overflow-hidden">
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-600/8 blur-[120px] rounded-full pointer-events-none" />
-
+    <section id="pricing" className="py-32 bg-white border-y border-taupe relative">
       <div className="max-w-6xl mx-auto px-6 relative">
         <div ref={ref} className="text-center mb-16">
           <motion.span
             initial={{ opacity: 0 }}
             animate={inView ? { opacity: 1 } : {}}
-            className="inline-block text-xs font-semibold tracking-widest uppercase text-indigo-400 mb-4"
+            className="inline-block text-xs font-semibold tracking-widest uppercase text-stone-warm mb-4"
           >
             Pricing
           </motion.span>
@@ -81,16 +78,16 @@ export function Pricing() {
             initial={{ opacity: 0, y: 20 }}
             animate={inView ? { opacity: 1, y: 0 } : {}}
             transition={{ delay: 0.1 }}
-            className="text-4xl md:text-5xl font-bold text-white tracking-tight mb-4"
+            className="text-4xl md:text-5xl font-bold text-espresso tracking-tight mb-4"
           >
             Simple,{" "}
-            <span className="gradient-text">honest pricing</span>
+            <span className="text-coral">honest pricing</span>
           </motion.h2>
           <motion.p
             initial={{ opacity: 0 }}
             animate={inView ? { opacity: 1 } : {}}
             transition={{ delay: 0.2 }}
-            className="text-white/40 text-lg"
+            className="text-stone-warm text-lg"
           >
             No seat fees. No hidden costs. Start free, upgrade when you need more.
           </motion.p>
@@ -105,46 +102,46 @@ export function Pricing() {
               transition={{ delay: i * 0.1 + 0.2, duration: 0.6 }}
               className={`relative rounded-2xl p-6 ${
                 plan.highlight
-                  ? "bg-gradient-to-b from-indigo-500/15 to-purple-500/10 border border-indigo-500/40 shadow-2xl shadow-indigo-500/10"
-                  : "bg-white/[0.03] border border-white/8"
+                  ? "bg-espresso border border-espresso shadow-[0_8px_32px_rgba(45,42,38,0.20)]"
+                  : "bg-white border border-taupe hover:border-tan hover:shadow-[0_4px_16px_rgba(45,42,38,0.08)] transition-all duration-300"
               }`}
             >
               {plan.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg">
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-coral text-white shadow-sm">
                     <Sparkles className="w-3 h-3" /> {plan.badge}
                   </span>
                 </div>
               )}
 
               <div className="mb-5">
-                <h3 className="text-base font-semibold text-white mb-1">{plan.name}</h3>
-                <p className="text-xs text-white/40">{plan.description}</p>
+                <h3 className={`text-base font-semibold mb-1 ${plan.highlight ? "text-white" : "text-espresso"}`}>{plan.name}</h3>
+                <p className={`text-xs ${plan.highlight ? "text-white/60" : "text-stone-warm"}`}>{plan.description}</p>
               </div>
 
               <div className="mb-6">
                 <div className="flex items-end gap-1">
-                  <span className="text-4xl font-bold text-white">${plan.price}</span>
-                  <span className="text-sm text-white/30 mb-1.5">/{plan.period}</span>
+                  <span className={`text-4xl font-bold ${plan.highlight ? "text-white" : "text-espresso"}`}>${plan.price}</span>
+                  <span className={`text-sm mb-1.5 ${plan.highlight ? "text-white/50" : "text-stone-warm"}`}>/{plan.period}</span>
                 </div>
               </div>
 
               <Link href={plan.href}>
-                <Button
-                  className={`w-full mb-6 ${
+                <button
+                  className={`w-full mb-6 h-10 rounded-xl text-sm font-semibold transition-all duration-200 ${
                     plan.highlight
-                      ? "bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-indigo-500/25"
-                      : "bg-white/5 hover:bg-white/10 text-white border border-white/10"
+                      ? "bg-white text-espresso hover:bg-cream"
+                      : "bg-espresso text-white hover:bg-espresso/85"
                   }`}
                 >
                   {plan.cta}
-                </Button>
+                </button>
               </Link>
 
               <ul className="space-y-2.5">
                 {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5 text-sm text-white/50">
-                    <Check className={`w-4 h-4 shrink-0 mt-0.5 ${plan.highlight ? "text-indigo-400" : "text-white/30"}`} />
+                  <li key={f} className={`flex items-start gap-2.5 text-sm ${plan.highlight ? "text-white/70" : "text-stone-warm"}`}>
+                    <Check className={`w-4 h-4 shrink-0 mt-0.5 ${plan.highlight ? "text-sage" : "text-sage"}`} />
                     {f}
                   </li>
                 ))}

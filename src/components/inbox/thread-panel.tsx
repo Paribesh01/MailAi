@@ -181,7 +181,7 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b shrink-0 bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-transparent">
+      <div className="flex items-center gap-1 px-4 py-2 border-b border-taupe shrink-0 bg-cream">
         <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
           <X className="w-4 h-4" />
         </Button>
@@ -237,7 +237,7 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn("h-8 w-8", actionItemsOpen && "bg-indigo-500/10 text-indigo-500")}
+                className={cn("h-8 w-8", actionItemsOpen && "bg-blue-light text-slate-blue")}
                 onClick={() => setActionItemsOpen((v) => !v)}
               >
                 <CheckSquare className="w-4 h-4" />
@@ -247,18 +247,50 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
           </Tooltip>
         </div>
 
-        {/* Category + response time */}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-warm">
+                <MoreHorizontal className="w-4 h-4" />
+              </Button>
+            } />
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleDelete} className="text-coral">
+                <Trash2 className="w-3.5 h-3.5 mr-2" /> Move to trash
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* Subject */}
+      <div className="px-6 py-4 border-b border-taupe shrink-0 bg-cream">
+        <h2 className="text-[22px] font-semibold text-espresso leading-tight tracking-tight mb-3">
+          {thread.subject}
+        </h2>
+        {thread.aiSummary && (
+          <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(45,42,38,0.06)] p-3 border-l-[3px] border-slate-blue">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-slate-blue" />
+              <span className="text-[11px] font-medium text-slate-blue tracking-wide bg-blue-light px-2 py-0.5 rounded">
+                AI Summary
+              </span>
+            </div>
+            <p className="text-sm text-stone-warm leading-relaxed">{thread.aiSummary}</p>
+          </div>
+        )}
+
+        {/* Action row */}
+        <div className="flex items-center justify-end gap-2 mt-3">
           {showNoReplyBadge && (
-            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20 font-medium">
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-sand-light text-sand border border-sand/30 font-medium mr-auto">
               <Clock className="w-2.5 h-2.5" />
               No reply {Math.floor(hoursSinceLastMessage / 24)}d
             </span>
           )}
-
           <DropdownMenu>
             <DropdownMenuTrigger render={
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1 border-taupe text-stone-warm hover:text-espresso">
                 <CategoryDot category={thread.category} />
                 {CATEGORIES.find((c) => c.value === thread.category)?.label ?? thread.category}
               </Button>
@@ -272,31 +304,7 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger render={
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="w-4 h-4" />
-              </Button>
-            } />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleDelete} className="text-destructive">
-                <Trash2 className="w-3.5 h-3.5 mr-2" /> Move to trash
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
-      </div>
-
-      {/* Subject */}
-      <div className="px-6 py-4 border-b shrink-0">
-        <h2 className="text-lg font-semibold leading-tight">{thread.subject}</h2>
-        {thread.aiSummary && (
-          <p className="mt-2 text-sm text-muted-foreground bg-indigo-500/5 rounded-lg px-3 py-2 border border-indigo-500/10">
-            <Sparkles className="w-3 h-3 inline mr-1 text-indigo-500" />
-            {thread.aiSummary}
-          </p>
-        )}
       </div>
 
       {/* Action items panel */}
@@ -307,7 +315,7 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 bg-cream/40">
         {thread.emails.map((email, i) => {
           const isExpanded = expandedEmails.has(email.id)
           const isLast = i === thread.emails.length - 1
@@ -386,24 +394,36 @@ function EmailBubble({
   const calendarUrl = `https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(subject)}`
 
   return (
-    <div className={cn("rounded-xl border transition-shadow", isLast && "shadow-sm ring-1 ring-border/50")}>
+    <div className={cn(
+      "bg-white rounded-xl shadow-[0_1px_3px_rgba(45,42,38,0.06)] transition-shadow",
+      isLast && "shadow-[0_4px_12px_rgba(45,42,38,0.08)]"
+    )}>
       {/* Header */}
       <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/30 rounded-xl"
+        className="flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-cream/60 rounded-xl"
         onClick={onToggle}
       >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium truncate">{senderDisplay}</span>
-            {!email.isRead && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />}
+        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+          <div className="w-7 h-7 rounded-full bg-sand flex items-center justify-center shrink-0">
+            <span className="text-white text-[10px] font-semibold">
+              {(email.fromName ?? email.from).split(/[\s<]/)[0]?.slice(0, 2).toUpperCase()}
+            </span>
           </div>
-          {!expanded && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{email.snippet}</p>
-          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold text-espresso truncate">{email.fromName ?? email.from}</span>
+              {!email.isRead && <span className="w-1.5 h-1.5 rounded-full bg-coral shrink-0" />}
+            </div>
+            {!expanded && (
+              <p className="text-xs text-stone-warm truncate mt-0.5">{email.snippet}</p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-muted-foreground">{date}</span>
-          {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+          <span className="text-xs text-stone-warm">{date}</span>
+          {expanded
+            ? <ChevronUp className="w-4 h-4 text-stone-warm" />
+            : <ChevronDown className="w-4 h-4 text-stone-warm" />}
         </div>
       </div>
 
@@ -411,16 +431,16 @@ function EmailBubble({
       {expanded && (
         <div className="px-4 pb-4">
           {email.to.length > 0 && (
-            <p className="text-xs text-muted-foreground mb-3">
+            <p className="text-xs text-stone-warm mb-3">
               To: {email.to.join(", ")}
               {email.cc.length > 0 && <> · Cc: {email.cc.join(", ")}</>}
             </p>
           )}
 
-          <div className="text-sm">
+          <div className="text-sm text-espresso leading-relaxed">
             {email.bodyHtml ? (
               <div
-                className="prose prose-sm dark:prose-invert max-w-none"
+                className="prose prose-sm max-w-none"
                 dangerouslySetInnerHTML={{ __html: email.bodyHtml }}
               />
             ) : (
@@ -432,9 +452,9 @@ function EmailBubble({
           {Array.isArray(email.attachments) && email.attachments.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {email.attachments.map((att: any, i: number) => (
-                <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs">
+                <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-taupe text-xs text-espresso">
                   <span className="font-medium">{att.filename}</span>
-                  <span className="text-muted-foreground">({Math.round(att.size / 1024)}KB)</span>
+                  <span className="text-stone-warm">({Math.round(att.size / 1024)}KB)</span>
                 </div>
               ))}
             </div>
@@ -442,24 +462,27 @@ function EmailBubble({
 
           {/* Action buttons */}
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={onReply}>
+            <button
+              onClick={onReply}
+              className="h-9 px-4 rounded-[10px] bg-espresso text-white text-xs font-semibold flex items-center gap-2 hover:bg-espresso/85 transition-colors"
+            >
               <Reply className="w-3.5 h-3.5" /> Reply with AI
-            </Button>
-            <Button size="sm" variant="ghost" className="gap-1.5">
+            </button>
+            <button className="h-9 px-3 rounded-[10px] border border-taupe text-stone-warm text-xs font-medium flex items-center gap-2 hover:border-stone-warm transition-colors">
               <Forward className="w-3.5 h-3.5" /> Forward
-            </Button>
+            </button>
             {hasMeeting && (
               <a href={calendarUrl} target="_blank" rel="noopener noreferrer">
-                <Button size="sm" variant="ghost" className="gap-1.5 text-teal-600 hover:text-teal-700 hover:bg-teal-500/10">
+                <button className="h-9 px-3 rounded-[10px] border border-taupe text-sage text-xs font-medium flex items-center gap-2 hover:border-sage transition-colors">
                   <Calendar className="w-3.5 h-3.5" /> Add to Calendar
-                </Button>
+                </button>
               </a>
             )}
             {unsubscribeUrl && (
               <a href={unsubscribeUrl} target="_blank" rel="noopener noreferrer">
-                <Button size="sm" variant="ghost" className="gap-1.5 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10">
+                <button className="h-9 px-3 rounded-[10px] border border-taupe text-coral text-xs font-medium flex items-center gap-2 hover:border-coral transition-colors">
                   <ExternalLink className="w-3.5 h-3.5" /> Unsubscribe
-                </Button>
+                </button>
               </a>
             )}
           </div>
@@ -471,9 +494,9 @@ function EmailBubble({
 
 function CategoryDot({ category }: { category: string }) {
   const colors: Record<string, string> = {
-    NEEDS_ATTENTION: "bg-rose-500",
-    CAN_WAIT: "bg-amber-500",
-    IGNORE: "bg-slate-400",
+    NEEDS_ATTENTION: "bg-coral",
+    CAN_WAIT: "bg-sage",
+    IGNORE: "bg-tan",
   }
-  return <span className={cn("w-2 h-2 rounded-full shrink-0", colors[category] ?? "bg-slate-400")} />
+  return <span className={cn("w-2 h-2 rounded-full shrink-0", colors[category] ?? "bg-tan")} />
 }

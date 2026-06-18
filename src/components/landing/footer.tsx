@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Mail } from "lucide-react"
+import { Sparkles } from "lucide-react"
 
 const LINKS = {
   Product: ["Features", "Pricing", "Changelog", "Roadmap"],
@@ -9,18 +9,18 @@ const LINKS = {
 
 export function Footer() {
   return (
-    <footer className="bg-[#060609] border-t border-white/5 py-16">
+    <footer className="bg-espresso border-t border-white/5 py-16">
       <div className="max-w-6xl mx-auto px-6">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
           {/* Brand */}
           <div className="col-span-2">
             <Link href="/" className="flex items-center gap-2.5 mb-4">
-              <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                <Mail className="w-3.5 h-3.5 text-white" />
+              <div className="w-7 h-7 rounded-xl bg-coral/20 flex items-center justify-center">
+                <Sparkles className="w-3.5 h-3.5 text-coral" />
               </div>
               <span className="font-bold text-white">MailAI</span>
             </Link>
-            <p className="text-sm text-white/30 max-w-xs leading-relaxed">
+            <p className="text-sm text-white/40 max-w-xs leading-relaxed">
               AI-powered email management that triages your inbox, drafts replies in your voice, and keeps follow-ups on track.
             </p>
             <div className="flex gap-3 mt-5">
@@ -54,7 +54,7 @@ export function Footer() {
           <p className="text-xs text-white/20">© 2026 MailAI. All rights reserved.</p>
           <p className="text-xs text-white/20">
             Built with{" "}
-            <span className="text-indigo-400/60">Claude Sonnet</span>
+            <span className="text-coral/60">Claude Sonnet</span>
             {" "}·{" "}
             <span className="text-white/30">Next.js 16 · PostgreSQL · Better Auth</span>
           </p>
