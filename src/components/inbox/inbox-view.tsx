@@ -118,6 +118,13 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
         handleSync()
       }
     })
+
+    // Auto-detect writing tone on first visit if not yet set
+    fetch("/api/settings").then((r) => r.json()).then((prefs) => {
+      if (!prefs.writingTone) {
+        fetch("/api/ai/detect-tone", { method: "POST" }).catch(() => {})
+      }
+    }).catch(() => {})
   }, [fetchThreads, handleSync])
 
   // Background poll every 60 s — silent, only notifies on genuinely new threads

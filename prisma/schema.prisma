@@ -217,6 +217,7 @@ model UserPreferences {
   notifyOnNewEmail Boolean  @default(true)
   dailyDigest      Boolean  @default(false)
   aiVoiceSamples   String[]
+  writingTone      String?
 
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

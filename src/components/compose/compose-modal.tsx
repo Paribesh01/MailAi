@@ -1,14 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { Send, X, Sparkles, Wand2, Loader2, Clock, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { format, addHours, addDays } from "date-fns"
 
-type Tone = "Friendly" | "Formal" | "Brief" | "Assertive"
-const TONES: Tone[] = ["Friendly", "Formal", "Brief", "Assertive"]
+type Tone = "Friendly" | "Formal" | "Brief" | "Assertive" | "Warm" | "Casual" | "Professional"
+const TONES: Tone[] = ["Friendly", "Formal", "Brief", "Assertive", "Warm", "Casual", "Professional"]
 
 const SCHEDULE_PRESETS = [
   { label: "In 1 hour", getDate: () => addHours(new Date(), 1) },
@@ -35,6 +35,14 @@ export function ComposeModal({ open, onClose, defaultTo = "", defaultSubject = "
   const [sending, setSending] = useState(false)
   const [generating, setGenerating] = useState(false)
 
+  // Load user's saved writing tone as default
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => { if (d.writingTone) setTone(d.writingTone as Tone) })
+      .catch(() => {})
+  }, [])
+
   // Schedule state
   const [showSchedule, setShowSchedule] = useState(false)
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null)
@@ -42,7 +50,8 @@ export function ComposeModal({ open, onClose, defaultTo = "", defaultSubject = "
   const [showCustomDate, setShowCustomDate] = useState(false)
 
   function reset() {
-    setTo(defaultTo); setSubject(defaultSubject); setBody(""); setInstruction(""); setTone("Friendly")
+    setTo(defaultTo); setSubject(defaultSubject); setBody(""); setInstruction("")
+    // Keep tone — don't reset to Friendly, user may have changed it intentionally
     setScheduledAt(null); setShowSchedule(false); setShowCustomDate(false); setCustomDateStr("")
   }
 

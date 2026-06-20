@@ -31,6 +31,9 @@ interface SenderRule {
   action: "NEEDS_ATTENTION" | "CAN_WAIT" | "IGNORE"
 }
 
+const TONES = ["Friendly", "Formal", "Brief", "Assertive", "Warm", "Casual", "Professional"] as const
+type WritingTone = (typeof TONES)[number]
+
 interface Prefs {
   theme: string
   emailSignature: string
@@ -38,6 +41,7 @@ interface Prefs {
   notifyOnNewEmail: boolean
   dailyDigest: boolean
   aiVoiceSamples: string[]
+  writingTone: WritingTone | null
 }
 
 export function SettingsView({ user }: SettingsViewProps) {
@@ -49,10 +53,12 @@ export function SettingsView({ user }: SettingsViewProps) {
     notifyOnNewEmail: true,
     dailyDigest: false,
     aiVoiceSamples: [],
+    writingTone: null,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [voiceSample, setVoiceSample] = useState("")
+  const [detectingTone, setDetectingTone] = useState(false)
 
   // Templates state
   const [templates, setTemplates] = useState<Template[]>([])
@@ -155,6 +161,22 @@ export function SettingsView({ user }: SettingsViewProps) {
       toast.error("Failed to save")
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function autoDetectTone() {
+    setDetectingTone(true)
+    try {
+      const res = await fetch("/api/ai/detect-tone", { method: "POST" })
+      const data = await res.json()
+      if (data.tone) {
+        setPrefs((p) => ({ ...p, writingTone: data.tone }))
+        toast.success(`Tone detected: ${data.tone} (from ${data.samplesAnalyzed ?? 0} emails)`)
+      }
+    } catch {
+      toast.error("Failed to detect tone")
+    } finally {
+      setDetectingTone(false)
     }
   }
 
@@ -421,6 +443,53 @@ export function SettingsView({ user }: SettingsViewProps) {
               </Select>
             </div>
           </div>
+        </section>
+
+        <Separator />
+
+        {/* Writing Tone */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5" /> Writing Tone
+            </h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={autoDetectTone}
+              disabled={detectingTone}
+              className="text-xs gap-1.5"
+            >
+              {detectingTone ? (
+                <><span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> Detecting…</>
+              ) : (
+                <><Sparkles className="w-3 h-3" /> Auto-detect from sent emails</>
+              )}
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Controls the default tone AI uses when composing emails for you. Auto-detect analyses your sent emails to match your natural style.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {TONES.map((t) => (
+              <button
+                key={t}
+                onClick={() => { setPrefs((p) => ({ ...p, writingTone: t })); save({ writingTone: t }) }}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                  prefs.writingTone === t
+                    ? "bg-espresso text-white border-espresso"
+                    : "bg-white text-stone-warm border-taupe hover:border-espresso hover:text-espresso"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          {prefs.writingTone && (
+            <p className="text-xs text-stone-warm">
+              Current tone: <span className="font-semibold text-espresso">{prefs.writingTone}</span>
+            </p>
+          )}
         </section>
 
         <Separator />
