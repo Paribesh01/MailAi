@@ -22,7 +22,21 @@ export async function GET(req: NextRequest) {
 
     if (category) where.category = category
     if (starred) where.isStarred = true
-    if (snoozed) where.isSnoozed = true
+    if (snoozed) {
+      where.isSnoozed = true
+    } else if (!archived) {
+      // Auto-unsnooze emails whose snoozedUntil has passed
+      await prisma.thread.updateMany({
+        where: {
+          userId: session.user.id,
+          isSnoozed: true,
+          snoozedUntil: { lte: new Date() },
+        },
+        data: { isSnoozed: false, snoozedUntil: null },
+      })
+      // Never show snoozed threads in normal inbox view
+      where.isSnoozed = false
+    }
 
     const [threads, total] = await Promise.all([
       prisma.thread.findMany({

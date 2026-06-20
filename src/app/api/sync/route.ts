@@ -105,10 +105,20 @@ async function syncThreadBatch(
   return { synced, newThreads }
 }
 
+// Per-user in-memory lock to prevent concurrent syncs
+const syncLocks = new Set<string>()
+
 export async function POST() {
+  let userId: string | null = null
   try {
     const session = await requireSession()
-    const userId = session.user.id
+    userId = session.user.id
+
+    // Prevent concurrent syncs for the same user
+    if (syncLocks.has(userId)) {
+      return NextResponse.json({ synced: 0, newThreads: 0, skipped: true })
+    }
+    syncLocks.add(userId)
 
     const syncRecord = await prisma.emailSync.findUnique({ where: { userId } })
 
@@ -153,6 +163,8 @@ export async function POST() {
     return NextResponse.json({ synced: totalSynced, newThreads: totalNew })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
+  } finally {
+    if (userId) syncLocks.delete(userId)
   }
 }
 

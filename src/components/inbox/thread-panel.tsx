@@ -15,7 +15,7 @@ import { toast } from "sonner"
 import {
   X, Star, Archive, Trash2, Bell, Sparkles, ChevronDown,
   ChevronUp, MoreHorizontal, Reply, Forward, CheckSquare, Calendar,
-  ExternalLink, Clock, Crown,
+  ExternalLink, Clock, Crown, BellOff, Mail, MailOpen,
 } from "lucide-react"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -156,6 +156,28 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
     await fetch(`/api/threads/${threadId}`, { method: "DELETE" })
     toast.success("Moved to trash")
     onClose()
+  }
+
+  async function handleCancelSnooze() {
+    if (!thread) return
+    onUpdate(threadId, { isSnoozed: false, snoozedUntil: null })
+    await fetch(`/api/threads/${threadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isSnoozed: false, snoozedUntil: null }),
+    })
+    toast.success("Snooze cancelled")
+  }
+
+  async function handleToggleRead() {
+    if (!thread) return
+    const next = !thread.isRead
+    onUpdate(threadId, { isRead: next })
+    await fetch(`/api/threads/${threadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isRead: next }),
+    })
   }
 
   async function handleCategoryChange(category: string) {
@@ -317,6 +339,16 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
               </Button>
             } />
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleToggleRead}>
+                {thread?.isRead
+                  ? <><MailOpen className="w-3.5 h-3.5 mr-2" /> Mark as unread</>
+                  : <><Mail className="w-3.5 h-3.5 mr-2" /> Mark as read</>}
+              </DropdownMenuItem>
+              {thread?.isSnoozed && (
+                <DropdownMenuItem onClick={handleCancelSnooze}>
+                  <BellOff className="w-3.5 h-3.5 mr-2" /> Cancel snooze
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={handleDelete} className="text-coral">
                 <Trash2 className="w-3.5 h-3.5 mr-2" /> Move to trash
               </DropdownMenuItem>

@@ -1,24 +1,48 @@
-# MailAI — AI-Powered Email Management
+# MailAI — AI-Powered Email Client
 
-> An open-source clone of [Upstream.do](https://www.upstream.do/) built with Next.js 16, Better Auth, Gmail API, and Claude AI.
+> A full-stack Gmail client with AI triage, smart drafting, mail merge, read receipts, scheduled sending, and multi-account support — built with Next.js 16, Groq AI, and Gmail API.
 
-MailAI is a full-stack email client that sits on top of your Gmail inbox and uses Claude to triage emails, draft replies in your voice, schedule follow-ups, and filter out noise — so you spend less time in email and more time on things that matter.
+MailAI sits on top of your Gmail inbox and uses Llama (via Groq) to triage emails, draft replies in your voice, schedule follow-ups, and filter noise — so you spend less time in email.
 
 ---
 
 ## Features
 
+### Core Email
 | Feature | Description |
 |---|---|
-| **Smart inbox splitting** | Claude categorises every email into *Needs Attention*, *Can Wait*, or *Ignore* |
-| **AI draft replies** | Generates replies that sound like you, trained on your past emails |
-| **AI follow-ups** | Suggests follow-up timing and drafts the message for unanswered threads |
-| **Noise filtering** | Cold emails, newsletters, and automated alerts are silently moved aside |
-| **Thread summarisation** | Condenses long threads into 2-3 sentences |
-| **Improve any draft** | Tell the AI to "make it shorter" or "be more assertive" and it rewrites instantly |
-| **Gmail sync** | Full two-way Gmail integration — read, send, archive, star, trash |
-| **Dark mode** | System-aware theme with manual toggle |
-| **Beautiful landing page** | Animated hero, feature cards, testimonials, and pricing |
+| **Gmail sync** | Full two-way integration — read, send, archive, star, trash, spam |
+| **AI triage** | Every email is automatically categorised: *Needs Attention*, *Can Wait*, or *Ignore* |
+| **Multi-account** | Connect additional Gmail accounts; all mail shown together with account badge |
+| **All inbox / Spam / Trash** | Dedicated views matching Gmail behaviour with restore and delete actions |
+| **Thread panel** | Full thread view with inline reply, forward, archive, star, VIP, and follow-up |
+| **Bulk actions** | Select multiple threads to archive, delete, move, or recategorise at once |
+
+### AI Features
+| Feature | Description |
+|---|---|
+| **AI draft replies** | Generates replies that match your tone, trained on your voice samples |
+| **Auto writing tone** | Analyses your sent emails on first login to detect your natural style |
+| **Smart replies** | Three quick-reply chips generated per thread |
+| **Thread summarisation** | Condenses long threads into 2–3 sentences |
+| **Draft improvement** | Tell AI "make it shorter" or "be more assertive" — it rewrites |
+| **AI follow-ups** | Suggests timing and drafts follow-up messages for unanswered threads |
+| **Action items** | Extracts explicit to-dos from a thread |
+| **AI chat assistant** | Chat with your inbox — ask what needs attention, who hasn't replied, etc. |
+| **Custom AI filters** | Create tab filters using plain English — AI reads each email to match |
+
+### Power Features
+| Feature | Description |
+|---|---|
+| **Send Later** | Schedule any email with presets or a custom date/time |
+| **Read receipts** | Invisible tracking pixel shows when and how many times your email was opened |
+| **Mail merge** | Send personalised bulk emails with `{{name}}` / `{{email}}` variables |
+| **Unsubscribe manager** | Detects newsletter senders and handles List-Unsubscribe in one click |
+| **VIP contacts** | Mark senders as VIP — their emails always land in Needs Attention |
+| **Sender rules** | Auto-categorise by sender pattern (e.g. *@bank.com → Needs Attention) |
+| **Email templates** | Save reusable email snippets with optional keyboard shortcuts |
+| **Snooze** | Snooze threads; auto-unsnooze when the time comes |
+| **Stats dashboard** | Category breakdown, unread count, noise ratio, top senders |
 
 ---
 
@@ -28,10 +52,11 @@ MailAI is a full-stack email client that sits on top of your Gmail inbox and use
 |---|---|
 | **Framework** | Next.js 16 (App Router, React 19) |
 | **Auth** | Better Auth + Google OAuth 2.0 |
-| **Database** | PostgreSQL + Prisma 7 |
-| **AI** | Anthropic Claude (claude-sonnet-4-6 / claude-haiku-4-5) |
+| **Database** | PostgreSQL (Neon) + Prisma 7 |
+| **AI** | Groq — Llama 3.1 8B Instant / Llama 3.3 70B Versatile |
 | **Email API** | Gmail API v1 via `googleapis` |
-| **UI** | Tailwind CSS v4 + shadcn/ui (base-ui) |
+| **Encryption** | AES-256-GCM at rest, per-user HMAC-SHA256 derived keys |
+| **UI** | Tailwind CSS v4 + shadcn/ui (base-ui radix) |
 | **Animations** | Framer Motion |
 | **Notifications** | Sonner |
 | **Hosting** | Vercel (recommended) |
@@ -43,45 +68,72 @@ MailAI is a full-stack email client that sits on top of your Gmail inbox and use
 ```
 src/
 ├── app/
-│   ├── page.tsx                  # Landing page (→ /inbox if logged in)
-│   ├── login/page.tsx            # Google OAuth login
-│   ├── inbox/
-│   │   ├── layout.tsx            # Auth guard + sidebar
-│   │   └── page.tsx              # Main inbox view
-│   ├── settings/
-│   │   ├── layout.tsx
-│   │   └── page.tsx              # Settings page
+│   ├── page.tsx                   # Landing page (→ /inbox if logged in)
+│   ├── login/                     # Google OAuth login
+│   ├── reauth/                    # Re-auth when Gmail scopes missing
+│   ├── inbox/                     # Main inbox (layout + page)
+│   ├── sent/                      # Sent emails + read receipts tab
+│   ├── spam/                      # Spam folder
+│   ├── trash/                     # Trash folder
+│   ├── scheduled/                 # Scheduled emails
+│   ├── merge/                     # Mail merge
+│   ├── stats/                     # Analytics dashboard
+│   ├── settings/                  # User preferences
+│   ├── unsubscribe/               # Unsubscribe manager
 │   └── api/
-│       ├── auth/[...all]/        # Better Auth handler
-│       ├── emails/               # GET list, POST send
-│       ├── threads/[threadId]/   # GET, PATCH, DELETE
-│       ├── sync/                 # POST trigger Gmail sync
-│       ├── search/               # Live Gmail search
-│       ├── follow-ups/           # GET list, PATCH done
-│       ├── labels/               # GET, POST
-│       ├── settings/             # GET, PATCH preferences
+│       ├── auth/[...all]/         # Better Auth (Google OAuth)
+│       ├── emails/                # GET list, POST send
+│       ├── threads/[threadId]/    # GET, PATCH, DELETE
+│       ├── sync/                  # POST trigger Gmail sync
+│       ├── search/                # Live Gmail search
+│       ├── sent/                  # GET sent emails
+│       ├── spam/                  # GET spam, POST not-spam/delete
+│       ├── trash/                 # GET trash, POST restore/delete
+│       ├── scheduled-emails/      # GET, POST, DELETE + /process
+│       ├── mail-merge/            # POST bulk personalised send
+│       ├── track/                 # GET list, open/[id] pixel
+│       ├── custom-filters/        # GET, POST, DELETE
+│       ├── linked-accounts/       # GET, DELETE, connect, callback
+│       ├── vip-contacts/          # GET, POST, DELETE
+│       ├── follow-ups/            # GET, PATCH
+│       ├── templates/             # GET, POST, DELETE
+│       ├── sender-rules/          # GET, POST, DELETE
+│       ├── unsubscribe/           # POST unsubscribe action
+│       ├── stats/                 # GET email analytics
+│       ├── settings/              # GET, PATCH preferences
 │       └── ai/
-│           ├── draft/            # AI reply drafting
-│           ├── follow-up/        # AI follow-up suggestion
-│           ├── summarize/        # Thread summarisation
-│           └── improve/          # Draft improvement
+│           ├── compose/           # Compose from scratch
+│           ├── draft/             # Generate reply draft
+│           ├── improve/           # Improve existing draft
+│           ├── summarize/         # Thread summary
+│           ├── follow-up/         # Follow-up suggestion
+│           ├── smart-reply/       # Quick reply chips
+│           ├── actions/           # Extract action items
+│           ├── chat/              # Chat with inbox context
+│           ├── filter/            # AI-powered custom filter
+│           ├── detect-tone/       # Detect writing tone from sent mail
+│           └── categorize/        # Email categorisation
 ├── components/
-│   ├── landing/                  # Landing page sections
-│   ├── inbox/                    # InboxView, EmailList, ThreadPanel, AiDraftPanel, etc.
-│   ├── compose/                  # ComposeModal
-│   ├── settings/                 # SettingsView
-│   └── layout/                  # Sidebar
+│   ├── landing/                   # Hero, Features, Pricing, Security, etc.
+│   ├── inbox/                     # InboxView, EmailList, ThreadPanel, SplitTabs, etc.
+│   ├── compose/                   # ComposeModal (AI compose + schedule)
+│   ├── scheduled/                 # ScheduledView
+│   ├── merge/                     # MergeView
+│   ├── unsubscribe/               # UnsubscribeView
+│   ├── settings/                  # SettingsView
+│   ├── gmail-folder/              # Shared Trash / Spam view
+│   └── layout/                    # Sidebar
 ├── lib/
-│   ├── auth.ts                   # Better Auth config
-│   ├── auth-client.ts            # Client-side auth hooks
-│   ├── prisma.ts                 # Prisma client singleton
-│   ├── gmail.ts                  # Gmail API wrapper
-│   ├── ai.ts                     # Claude AI functions
-│   └── session.ts                # Server session helpers
-├── types/
-│   └── email.ts                  # TypeScript types
-└── generated/
-    └── prisma/                   # Auto-generated Prisma client
+│   ├── auth.ts                    # Better Auth config
+│   ├── auth-client.ts             # Client-side auth
+│   ├── prisma.ts                  # Prisma client singleton
+│   ├── gmail.ts                   # Gmail API wrapper + multi-account
+│   ├── gmail-scopes.ts            # Scope validation
+│   ├── ai.ts                      # AI categorisation + voice
+│   ├── crypto.ts                  # AES-256-GCM encryption helpers
+│   └── session.ts                 # Server session helpers
+└── types/
+    └── email.ts                   # TypeScript interfaces
 ```
 
 ---
@@ -96,72 +148,61 @@ cd mailai
 npm install
 ```
 
-### 2. Set up environment variables
+### 2. Environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in `.env`:
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_APP_URL` | ✅ | App base URL (`http://localhost:3000` locally) |
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `GOOGLE_CLIENT_ID` | ✅ | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | ✅ | Google OAuth client secret |
+| `GROQ_API_KEY` | ✅ | Groq API key — [console.groq.com](https://console.groq.com) (free) |
+| `BETTER_AUTH_SECRET` | ✅ | Random 32-byte hex string (`openssl rand -hex 32`) |
+| `ENCRYPTION_SECRET` | ✅ | Random 32-byte hex string for email encryption at rest |
+| `HMAC_SECRET` | ✅ | Random 32-byte hex string for OAuth state signing |
 
-```env
-# App URL
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# PostgreSQL database
-DATABASE_URL=postgresql://user:password@localhost:5432/mailai
-
-# Google OAuth credentials
-# Create at: https://console.cloud.google.com
-# → APIs & Services → Credentials → OAuth 2.0 Client IDs
-# → Authorised redirect URI: http://localhost:3000/api/auth/callback/google
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
-# Anthropic API key
-# Get at: https://console.anthropic.com
-ANTHROPIC_API_KEY=
-
-# Better Auth secret (generate with: openssl rand -hex 32)
-BETTER_AUTH_SECRET=
-```
-
-### 3. Set up Google Cloud
+### 3. Google Cloud setup
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project (or use an existing one)
-3. Enable **Gmail API** under *APIs & Services → Library*
-4. Create **OAuth 2.0 credentials** under *APIs & Services → Credentials*
-5. Add authorised redirect URI: `http://localhost:3000/api/auth/callback/google`
-6. Copy the client ID and secret into `.env`
+2. Enable **Gmail API** under *APIs & Services → Library*
+3. Create an **OAuth 2.0 Client ID** under *APIs & Services → Credentials*
+4. Add authorised redirect URIs:
+   - `http://localhost:3000/api/auth/callback/google`
+   - `http://localhost:3000/api/linked-accounts/callback`
+5. Copy client ID and secret into `.env`
 
-**Required Gmail scopes** (requested automatically during sign-in):
-- `https://www.googleapis.com/auth/gmail.readonly`
-- `https://www.googleapis.com/auth/gmail.send`
-- `https://www.googleapis.com/auth/gmail.modify`
-- `https://www.googleapis.com/auth/gmail.labels`
+**Required Gmail scopes** (requested automatically on sign-in):
+```
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/gmail.modify
+https://www.googleapis.com/auth/gmail.labels
+```
 
-### 4. Set up the database
+### 4. Database setup
 
 ```bash
-# Run migrations
-npx prisma migrate dev --name init
+# Apply all migrations
+npx prisma migrate deploy
 
-# (Optional) Open Prisma Studio to inspect data
+# (or for local dev with Neon, use db push)
+npx prisma db push
+
+# Inspect data
 npx prisma studio
 ```
 
-### 5. Start the dev server
+### 5. Run the dev server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign in with Google.
-
-### 6. Sync your inbox
-
-After signing in, click the **sync button** (↻) in the inbox header to pull your Gmail threads. The first sync categorises up to 50 threads using Claude.
+Open [http://localhost:3000](http://localhost:3000), sign in with Google, then click the **↻** sync button to pull your Gmail threads.
 
 ---
 
@@ -169,38 +210,31 @@ After signing in, click the **sync button** (↻) in the inbox header to pull yo
 
 | Method | Route | Description |
 |---|---|---|
-| `POST` | `/api/sync` | Sync Gmail → DB, AI categorise new threads |
-| `GET` | `/api/emails` | List threads (with category/star/archive filters) |
-| `GET` | `/api/threads/:id` | Get thread with all emails |
-| `PATCH` | `/api/threads/:id` | Archive, star, snooze, recategorise |
-| `POST` | `/api/emails` | Send an email |
-| `GET` | `/api/search?q=` | Live search via Gmail API |
+| `POST` | `/api/sync` | Sync Gmail → DB, AI-categorise new threads |
+| `GET` | `/api/emails` | List threads (category / star / archive / snooze filters) |
+| `GET` | `/api/threads/:id` | Full thread with all emails |
+| `PATCH` | `/api/threads/:id` | Archive, star, snooze, recategorise, mark read |
+| `DELETE` | `/api/threads/:id` | Move to Gmail trash |
+| `POST` | `/api/emails` | Send email (auto-injects read receipt pixel) |
+| `GET` | `/api/search?q=` | Live Gmail search |
+| `POST` | `/api/scheduled-emails` | Schedule an email |
+| `POST` | `/api/scheduled-emails/process` | Send all due scheduled emails |
+| `POST` | `/api/mail-merge` | Bulk send with `{{variable}}` personalisation |
+| `GET` | `/api/track` | List email open tracking records |
+| `GET` | `/api/track/open/:id` | 1×1 tracking pixel (records open) |
 | `POST` | `/api/ai/draft` | Generate AI reply draft |
-| `POST` | `/api/ai/improve` | Improve an existing draft |
-| `POST` | `/api/ai/summarize` | Summarise a thread |
-| `POST` | `/api/ai/follow-up` | AI-schedule a follow-up |
-| `GET` | `/api/follow-ups` | List pending follow-ups |
+| `POST` | `/api/ai/detect-tone` | Detect writing tone from sent emails |
+| `POST` | `/api/ai/filter` | AI-powered custom filter matching |
+| `GET` | `/api/linked-accounts/connect` | Start OAuth for additional Gmail account |
 
 ---
 
-## AI Features
+## Security
 
-All AI features use **Claude** via the Anthropic SDK.
-
-### Email triage (`/api/sync`)
-On every sync, new threads are passed to `categorizeEmail()` which uses `claude-sonnet-4-6` to assign one of:
-- `NEEDS_ATTENTION` — urgent, requires a reply
-- `CAN_WAIT` — low urgency, informational
-- `IGNORE` — cold outreach, newsletters, automated alerts
-
-### Reply drafting (`/api/ai/draft`)
-`draftReply()` receives the full thread history and your writing samples (from Settings → AI Voice Training), then generates a reply that matches your tone and style.
-
-### Follow-up suggestions (`/api/ai/follow-up`)
-`suggestFollowUp()` reads the thread and decides both the ideal follow-up timing and the message text. You can also override both manually.
-
-### Draft improvement (`/api/ai/improve`)
-`improvedraft()` takes your existing draft and a natural language instruction ("be more concise", "add a meeting request") and rewrites it.
+- **Email content encrypted at rest** — AES-256-GCM with per-user HMAC-SHA256 derived keys. Bodies, snippets, and summaries stored encrypted in PostgreSQL.
+- **HTTPS in transit** — all communication over TLS; Groq API policy prohibits training on your data.
+- **Cascade delete** — deleting your account removes all emails, threads, and preferences from the database.
+- **OAuth state signing** — multi-account linking uses HMAC-SHA256 signed state parameters (10-minute expiry) to prevent CSRF.
 
 ---
 
@@ -212,7 +246,9 @@ On every sync, new threads are passed to `categorizeEmail()` which uses `claude-
 npx vercel
 ```
 
-Set all environment variables in the Vercel dashboard. Use [Vercel Postgres](https://vercel.com/storage/postgres) or [Supabase](https://supabase.com) for the database.
+Set all environment variables in the Vercel dashboard. Use [Neon](https://neon.tech) for the database (serverless PostgreSQL, free tier available).
+
+> **Note for Neon users:** Use `npx prisma db push` instead of `migrate dev` — Neon's serverless pooler can time out on advisory locks used by `migrate dev`. For production migrations use `migrate deploy` or manually apply SQL and mark with `migrate resolve --applied`.
 
 ### Docker
 
@@ -230,22 +266,9 @@ CMD ["npm", "start"]
 
 ---
 
-## Environment Variables Reference
-
-| Variable | Required | Description |
-|---|---|---|
-| `NEXT_PUBLIC_APP_URL` | ✅ | Your app's base URL |
-| `DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `GOOGLE_CLIENT_ID` | ✅ | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | ✅ | Google OAuth client secret |
-| `ANTHROPIC_API_KEY` | ✅ | Anthropic API key |
-| `BETTER_AUTH_SECRET` | ✅ | Random secret for session signing |
-
----
-
 ## Contributing
 
-PRs are welcome. For major changes, open an issue first to discuss what you'd like to change.
+PRs are welcome. For major changes, open an issue first.
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feat/amazing-feature`)
@@ -260,4 +283,4 @@ MIT — see [LICENSE](./LICENSE) for details.
 
 ---
 
-Built with [Claude Code](https://claude.ai/code) · Inspired by [Upstream.do](https://www.upstream.do/)
+Built with [Claude Code](https://claude.ai/code)
