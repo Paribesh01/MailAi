@@ -255,6 +255,16 @@ function ThreadRow({
             </p>
           </div>
 
+          {/* Account badge — only shown for linked accounts */}
+          {thread.accountEmail && (
+            <div className="flex items-center gap-1 mt-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-blue shrink-0" />
+              <span className="text-[11px] text-slate-blue font-medium truncate">
+                {thread.accountEmail}
+              </span>
+            </div>
+          )}
+
           {/* Labels */}
           {thread.labels.length > 0 && (
             <div className="flex gap-1 flex-wrap mt-1.5">

@@ -31,6 +31,8 @@ export interface Thread {
   participantNames: string[]
   messageCount: number
   aiSummary: string | null
+  accountEmail: string | null
+  isReplyLater: boolean
   labels: Array<{ label: Label }>
   followUps?: FollowUp[]
   _count?: { emails: number }

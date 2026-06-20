@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import { Sun, Moon, Monitor, Sparkles, Bell, Mail, FileText, ShieldCheck, Trash2, Plus } from "lucide-react"
+import { Sun, Moon, Monitor, Sparkles, Bell, Mail, FileText, ShieldCheck, Trash2, Plus, Link2, UserPlus } from "lucide-react"
 
 interface SettingsViewProps {
   user: { id: string; name: string; email: string; image?: string | null }
@@ -66,6 +66,11 @@ export function SettingsView({ user }: SettingsViewProps) {
   const [newRule, setNewRule] = useState({ pattern: "", action: "NEEDS_ATTENTION" as SenderRule["action"] })
   const [addingRule, setAddingRule] = useState(false)
 
+  // Linked accounts state
+  const [linkedAccounts, setLinkedAccounts] = useState<{ id: string; email: string; name: string | null; image: string | null }[]>([])
+  const [linkedLoading, setLinkedLoading] = useState(true)
+  const [removingLinked, setRemovingLinked] = useState<Set<string>>(new Set())
+
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
@@ -88,6 +93,52 @@ export function SettingsView({ user }: SettingsViewProps) {
       .catch(() => toast.error("Failed to load sender rules"))
       .finally(() => setRulesLoading(false))
   }, [])
+
+  useEffect(() => {
+    fetch("/api/linked-accounts")
+      .then((r) => r.json())
+      .then((d) => setLinkedAccounts(d.accounts ?? []))
+      .catch(() => toast.error("Failed to load linked accounts"))
+      .finally(() => setLinkedLoading(false))
+  }, [])
+
+  // Check for ?linked= query params from OAuth callback
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const linked = params.get("linked")
+    const email = params.get("email")
+    if (linked === "success" && email) {
+      toast.success(`${email} connected successfully`)
+      fetch("/api/linked-accounts")
+        .then((r) => r.json())
+        .then((d) => setLinkedAccounts(d.accounts ?? []))
+      window.history.replaceState({}, "", "/settings")
+    } else if (linked === "error") {
+      toast.error("Failed to connect account")
+      window.history.replaceState({}, "", "/settings")
+    } else if (linked === "primary") {
+      toast.error("That's already your primary account")
+      window.history.replaceState({}, "", "/settings")
+    }
+  }, [])
+
+  async function removeLinkedAccount(id: string) {
+    setRemovingLinked((prev) => new Set([...prev, id]))
+    try {
+      await fetch("/api/linked-accounts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      setLinkedAccounts((prev) => prev.filter((a) => a.id !== id))
+      toast.success("Account disconnected")
+    } catch {
+      toast.error("Failed to disconnect account")
+    } finally {
+      setRemovingLinked((prev) => { const next = new Set(prev); next.delete(id); return next })
+    }
+  }
 
   async function save(updates: Partial<Prefs>) {
     setSaving(true)
@@ -226,6 +277,71 @@ export function SettingsView({ user }: SettingsViewProps) {
               <p className="text-sm text-muted-foreground">{user.email}</p>
             </div>
           </div>
+        </section>
+
+        <Separator />
+
+        {/* Connected Accounts */}
+        <section className="space-y-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+            <Link2 className="w-3.5 h-3.5" /> Connected Accounts
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Connect additional Gmail accounts. Their emails appear in your inbox with an account label.
+            You&apos;ll need to add <code className="text-xs bg-muted px-1 py-0.5 rounded">{typeof window !== "undefined" ? window.location.origin : ""}/api/linked-accounts/callback</code> as an authorized redirect URI in your Google Cloud Console.
+          </p>
+
+          {/* Primary account */}
+          <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/20">
+            <Avatar className="w-8 h-8">
+              <AvatarImage src={user.image ?? undefined} />
+              <AvatarFallback className="text-xs">{user.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{user.name}</p>
+              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            </div>
+            <Badge variant="secondary" className="shrink-0 text-xs">Primary</Badge>
+          </div>
+
+          {/* Linked accounts */}
+          {linkedLoading ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : linkedAccounts.length > 0 ? (
+            <div className="space-y-2">
+              {linkedAccounts.map((acct) => {
+                const initials = (acct.name ?? acct.email).slice(0, 2).toUpperCase()
+                return (
+                  <div key={acct.id} className="flex items-center gap-3 p-3 rounded-lg border">
+                    <Avatar className="w-8 h-8">
+                      <AvatarImage src={acct.image ?? undefined} />
+                      <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{acct.name ?? acct.email}</p>
+                      <p className="text-xs text-muted-foreground truncate">{acct.email}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive shrink-0"
+                      disabled={removingLinked.has(acct.id)}
+                      onClick={() => removeLinkedAccount(acct.id)}
+                    >
+                      {removingLinked.has(acct.id) ? "Removing…" : "Disconnect"}
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
+
+          <a href="/api/linked-accounts/connect">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <UserPlus className="w-3.5 h-3.5" />
+              Connect Gmail account
+            </Button>
+          </a>
         </section>
 
         <Separator />

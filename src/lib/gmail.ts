@@ -36,6 +36,38 @@ async function getGmailClient(userId: string) {
   return google.gmail({ version: "v1", auth: oauth2Client })
 }
 
+export async function getLinkedGmailClient(linkedAccountId: string) {
+  const account = await prisma.linkedAccount.findUnique({
+    where: { id: linkedAccountId },
+  })
+  if (!account?.accessToken) throw new Error("Linked account not found")
+
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    `${process.env.NEXT_PUBLIC_APP_URL}/api/linked-accounts/callback`
+  )
+
+  oauth2Client.setCredentials({
+    access_token: account.accessToken,
+    refresh_token: account.refreshToken ?? undefined,
+    expiry_date: account.expiresAt?.getTime(),
+  })
+
+  oauth2Client.on("tokens", async (tokens) => {
+    await prisma.linkedAccount.update({
+      where: { id: account.id },
+      data: {
+        accessToken: tokens.access_token ?? account.accessToken,
+        refreshToken: tokens.refresh_token ?? account.refreshToken,
+        expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
+      },
+    })
+  })
+
+  return google.gmail({ version: "v1", auth: oauth2Client })
+}
+
 export interface GmailThread {
   gmailThreadId: string
   subject: string
@@ -155,9 +187,7 @@ function parseMessage(msg: any): GmailMessage {
   }
 }
 
-export async function fetchThreads(userId: string, maxResults = 50, pageToken?: string) {
-  const gmail = await getGmailClient(userId)
-
+async function fetchThreadsWithClient(gmail: ReturnType<typeof google.gmail>, maxResults: number, pageToken?: string) {
   const res = await gmail.users.threads.list({
     userId: "me",
     maxResults,
@@ -204,6 +234,16 @@ export async function fetchThreads(userId: string, maxResults = 50, pageToken?: 
   )
 
   return { threads, nextPageToken: res.data.nextPageToken }
+}
+
+export async function fetchThreadsForLinkedAccount(linkedAccountId: string, maxResults = 50) {
+  const gmail = await getLinkedGmailClient(linkedAccountId)
+  return fetchThreadsWithClient(gmail, maxResults)
+}
+
+export async function fetchThreads(userId: string, maxResults = 50, pageToken?: string) {
+  const gmail = await getGmailClient(userId)
+  return fetchThreadsWithClient(gmail, maxResults, pageToken)
 }
 
 export async function fetchThread(userId: string, gmailThreadId: string): Promise<GmailThread> {

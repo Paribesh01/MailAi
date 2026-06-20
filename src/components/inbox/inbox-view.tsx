@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Thread, EmailCategory } from "@/types/email"
-import { SplitTabs } from "./split-tabs"
+import { SplitTabs, CustomFilter, FilterConditions } from "./split-tabs"
 import { EmailList } from "./email-list"
 import { ThreadPanel } from "./thread-panel"
 import { SearchBar } from "./search-bar"
@@ -27,7 +27,9 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
 
   const [threads, setThreads] = useState<Thread[]>([])
   const [selectedThread, setSelectedThread] = useState<string | null>(null)
-  const [activeCategory, setActiveCategory] = useState<EmailCategory | "ALL">("NEEDS_ATTENTION")
+  const [activeCategory, setActiveCategory] = useState<EmailCategory | "ALL" | string>("NEEDS_ATTENTION")
+  const [activeCustomFilter, setActiveCustomFilter] = useState<CustomFilter | null>(null)
+  const [linkedAccountEmails, setLinkedAccountEmails] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [newEmailsBanner, setNewEmailsBanner] = useState(false)
@@ -50,13 +52,22 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
     if (openCompose) setComposeOpen(true)
   }, [openCompose])
 
+  useEffect(() => {
+    fetch("/api/linked-accounts")
+      .then((r) => r.json())
+      .then((d) => setLinkedAccountEmails((d.accounts ?? []).map((a: { email: string }) => a.email)))
+      .catch(() => {})
+  }, [])
+
   const fetchThreads = useCallback(async (p = 1): Promise<number> => {
     setLoading(p === 1)
     try {
       const params = new URLSearchParams()
-      if (!isStarred && !isSnoozed && !isArchived && !isFollowups && activeCategory !== "ALL") {
+      const isCustom = !!activeCustomFilter
+      if (!isStarred && !isSnoozed && !isArchived && !isFollowups && !isCustom && activeCategory !== "ALL") {
         params.set("category", activeCategory)
       }
+      if (isCustom) params.set("limit", "200")
       if (isStarred) params.set("starred", "true")
       if (isSnoozed) params.set("snoozed", "true")
       if (isArchived) params.set("archived", "true")
@@ -79,7 +90,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
     } finally {
       setLoading(false)
     }
-  }, [activeCategory, isStarred, isSnoozed, isArchived, isFollowups])
+  }, [activeCategory, activeCustomFilter, isStarred, isSnoozed, isArchived, isFollowups])
 
   const handleSync = useCallback(async () => {
     setSyncing(true)
@@ -186,7 +197,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
     })
   }
 
-  const displayThreads = searchResults ?? threads
+  const displayThreads = searchResults ?? applyCustomFilter(threads, activeCustomFilter)
 
   useKeyboardShortcuts({
     threads: displayThreads,
@@ -239,8 +250,13 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
         {!isStarred && !isSnoozed && !isArchived && !isFollowups && !searchQuery && (
           <SplitTabs
             active={activeCategory}
-            onChange={(cat) => { setActiveCategory(cat); setPage(1) }}
+            onChange={(cat, cf) => {
+              setActiveCategory(cat)
+              setActiveCustomFilter(cf ?? null)
+              setPage(1)
+            }}
             counts={counts}
+            linkedAccountEmails={linkedAccountEmails}
           />
         )}
 
@@ -292,4 +308,27 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
       <ChatAssistant />
     </div>
   )
+}
+
+function applyCustomFilter(threads: Thread[], cf: CustomFilter | null): Thread[] {
+  if (!cf) return threads
+  const c = cf.conditions as FilterConditions
+  return threads.filter((t) => {
+    if (c.category && t.category !== c.category) return false
+    if (c.isUnread && t.isRead) return false
+    if (c.isStarred && !t.isStarred) return false
+    if (c.hasFollowUp && !t.hasFollowUp) return false
+    if (c.accountEmail === "__primary__" && t.accountEmail !== null) return false
+    if (c.accountEmail && c.accountEmail !== "__primary__" && t.accountEmail !== c.accountEmail) return false
+    if (c.senderContains) {
+      const q = c.senderContains.toLowerCase()
+      const match = t.participantEmails.some((e) => e.toLowerCase().includes(q)) ||
+        t.participantNames.some((n) => n.toLowerCase().includes(q))
+      if (!match) return false
+    }
+    if (c.subjectContains) {
+      if (!t.subject.toLowerCase().includes(c.subjectContains.toLowerCase())) return false
+    }
+    return true
+  })
 }
