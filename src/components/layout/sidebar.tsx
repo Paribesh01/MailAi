@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { signOut } from "@/lib/auth-client"
 import {
   Inbox, Star, Clock, Archive, Bell, Settings, PenSquare, BarChart2, LogOut, Send, Sparkles,
+  Crown, MailX,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -23,6 +24,7 @@ const NAV = [
   { href: "/inbox?archived=true", icon: Archive, label: "Archived" },
   { href: "/inbox?followups=true", icon: Bell, label: "Follow-ups" },
   { href: "/stats", icon: BarChart2, label: "Analytics" },
+  { href: "/unsubscribe", icon: MailX, label: "Unsubscribe Manager" },
 ]
 
 export function Sidebar({ user }: SidebarProps) {

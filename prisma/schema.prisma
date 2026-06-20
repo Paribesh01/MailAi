@@ -28,6 +28,7 @@ model User {
   templates     EmailTemplate[]
   senderRules   SenderRule[]
   actionItems   ActionItem[]
+  vipContacts   VipContact[]
 
   @@map("user")
 }
@@ -256,4 +257,18 @@ model ActionItem {
 
   @@index([userId, isDone])
   @@map("action_item")
+}
+
+model VipContact {
+  id        String   @id @default(cuid())
+  email     String
+  name      String?
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
+  @@index([userId])
+  @@map("vip_contact")
 }

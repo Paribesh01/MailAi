@@ -15,7 +15,7 @@ import { toast } from "sonner"
 import {
   X, Star, Archive, Trash2, Bell, Sparkles, ChevronDown,
   ChevronUp, MoreHorizontal, Reply, Forward, CheckSquare, Calendar,
-  ExternalLink, Clock,
+  ExternalLink, Clock, Crown,
 } from "lucide-react"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -59,6 +59,8 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
   const [followUpOpen, setFollowUpOpen] = useState(false)
   const [actionItemsOpen, setActionItemsOpen] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
+  const [isVip, setIsVip] = useState(false)
+  const [vipLoading, setVipLoading] = useState(false)
 
   const refetchThread = async () => {
     try {
@@ -79,6 +81,51 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
     refetchThread().finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId])
+
+  // Check VIP status for the primary sender of this thread
+  useEffect(() => {
+    if (!thread) return
+    const senderEmail = thread.emails?.[0]?.from
+    if (!senderEmail) return
+    fetch("/api/vip-contacts")
+      .then((r) => r.json())
+      .then((data) => {
+        const emails = (data.contacts ?? []).map((c: { email: string }) => c.email.toLowerCase())
+        setIsVip(emails.includes(senderEmail.toLowerCase()))
+      })
+      .catch(() => {})
+  }, [thread])
+
+  async function handleToggleVip() {
+    if (!thread) return
+    const senderEmail = thread.emails?.[0]?.from
+    const senderName = thread.emails?.[0]?.fromName
+    if (!senderEmail) return
+    setVipLoading(true)
+    try {
+      if (isVip) {
+        await fetch("/api/vip-contacts", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: senderEmail }),
+        })
+        setIsVip(false)
+        toast.success("Removed from VIPs")
+      } else {
+        await fetch("/api/vip-contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: senderEmail, name: senderName }),
+        })
+        setIsVip(true)
+        toast.success("Marked as VIP — emails will always go to Needs Attention")
+      }
+    } catch {
+      toast.error("Failed to update VIP status")
+    } finally {
+      setVipLoading(false)
+    }
+  }
 
   async function handleStar() {
     if (!thread) return
@@ -194,6 +241,21 @@ export function ThreadPanel({ threadId, onClose, onUpdate, userName, userEmail }
               </Button>
             } />
             <TooltipContent>{thread.isStarred ? "Unstar" : "Star"}</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleToggleVip}
+                disabled={vipLoading}
+              >
+                <Crown className={cn("w-4 h-4", isVip && "fill-sand text-sand")} />
+              </Button>
+            } />
+            <TooltipContent>{isVip ? "Remove VIP" : "Mark sender as VIP"}</TooltipContent>
           </Tooltip>
 
           <Tooltip>

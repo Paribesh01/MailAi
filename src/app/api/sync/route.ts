@@ -13,6 +13,13 @@ export async function POST() {
     const syncRecord = await prisma.emailSync.findUnique({ where: { userId } })
     const { threads } = await fetchThreads(userId, 50)
 
+    // Load VIP emails once for the whole sync
+    const vipContacts = await prisma.vipContact.findMany({
+      where: { userId },
+      select: { email: true },
+    })
+    const vipSet = new Set(vipContacts.map((v) => v.email.toLowerCase()))
+
     let synced = 0
     let newThreads = 0
 
@@ -29,14 +36,25 @@ export async function POST() {
         newThreads++
         const firstMsg = t.messages[0]
         if (firstMsg) {
-          const result = await categorizeEmail({
-            subject: t.subject,
-            from: firstMsg.from,
-            snippet: t.snippet,
-            body: firstMsg.bodyText || firstMsg.snippet,
-          })
-          category = result.category
-          aiSummary = result.aiSummary
+          // VIP senders always go to NEEDS_ATTENTION, skip AI categorization
+          if (vipSet.has(firstMsg.from.toLowerCase())) {
+            category = "NEEDS_ATTENTION"
+          } else {
+            const result = await categorizeEmail({
+              subject: t.subject,
+              from: firstMsg.from,
+              snippet: t.snippet,
+              body: firstMsg.bodyText || firstMsg.snippet,
+            })
+            category = result.category
+            aiSummary = result.aiSummary
+          }
+        }
+      } else if (existing) {
+        // If sender became VIP after initial sync, promote existing thread
+        const firstMsg = t.messages[0]
+        if (firstMsg && vipSet.has(firstMsg.from.toLowerCase()) && existing.category !== "NEEDS_ATTENTION") {
+          category = "NEEDS_ATTENTION"
         }
       }
 
