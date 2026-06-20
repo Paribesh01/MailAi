@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Thread, ThreadDetail, Email } from "@/types/email"
 import { cn } from "@/lib/utils"
 import { format, formatDistanceToNow, differenceInHours } from "date-fns"
@@ -501,10 +501,7 @@ function EmailBubble({
 
           <div className="text-sm text-espresso leading-relaxed">
             {email.bodyHtml ? (
-              <div
-                className="prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: email.bodyHtml }}
-              />
+              <EmailBody html={email.bodyHtml} />
             ) : (
               <pre className="whitespace-pre-wrap font-sans text-sm">{email.bodyText || email.snippet}</pre>
             )}
@@ -561,4 +558,54 @@ function CategoryDot({ category }: { category: string }) {
     IGNORE: "bg-tan",
   }
   return <span className={cn("w-2 h-2 rounded-full shrink-0", colors[category] ?? "bg-tan")} />
+}
+
+function EmailBody({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const [height, setHeight] = useState(300)
+
+  const srcDoc = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #2d2a26;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    overflow-x: hidden;
+  }
+  img { max-width: 100% !important; height: auto; }
+  a { color: #6b7db3; }
+  table { max-width: 100% !important; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>${html}</body>
+</html>`
+
+  function handleLoad() {
+    const iframe = iframeRef.current
+    if (!iframe?.contentDocument?.body) return
+    setHeight(iframe.contentDocument.body.scrollHeight + 24)
+  }
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={srcDoc}
+      onLoad={handleLoad}
+      className="w-full border-0 block"
+      style={{ height }}
+      sandbox="allow-same-origin allow-popups"
+      title="Email content"
+    />
+  )
 }
