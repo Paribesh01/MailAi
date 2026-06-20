@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { signOut } from "@/lib/auth-client"
 import {
   Inbox, Star, Clock, Archive, Bell, Settings, PenSquare, BarChart2, LogOut, Send, Sparkles,
-  Crown, MailX, Trash2, ShieldOff,
+  Crown, MailX, Trash2, ShieldOff, CalendarClock, Users,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -27,6 +27,8 @@ const NAV = [
   { href: "/unsubscribe", icon: MailX, label: "Unsubscribe Manager" },
   { href: "/spam", icon: ShieldOff, label: "Spam" },
   { href: "/trash", icon: Trash2, label: "Trash" },
+  { href: "/scheduled", icon: CalendarClock, label: "Scheduled Emails" },
+  { href: "/merge", icon: Users, label: "Mail Merge" },
 ]
 
 export function Sidebar({ user }: SidebarProps) {

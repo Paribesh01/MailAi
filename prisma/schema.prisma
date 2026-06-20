@@ -28,9 +28,11 @@ model User {
   templates     EmailTemplate[]
   senderRules   SenderRule[]
   actionItems   ActionItem[]
-  vipContacts    VipContact[]
-  linkedAccounts LinkedAccount[]
-  customFilters  CustomFilter[]
+  vipContacts      VipContact[]
+  linkedAccounts   LinkedAccount[]
+  customFilters    CustomFilter[]
+  scheduledEmails  ScheduledEmail[]
+  emailTracks      EmailTrack[]
 
   @@map("user")
 }
@@ -275,6 +277,40 @@ model VipContact {
   @@unique([userId, email])
   @@index([userId])
   @@map("vip_contact")
+}
+
+model ScheduledEmail {
+  id          String    @id @default(cuid())
+  to          String
+  subject     String
+  body        String    @db.Text
+  scheduledAt DateTime
+  status      String    @default("pending")
+  sentAt      DateTime?
+  error       String?
+  createdAt   DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, scheduledAt])
+  @@map("scheduled_email")
+}
+
+model EmailTrack {
+  id         String    @id @default(cuid())
+  trackingId String    @unique
+  toEmail    String
+  subject    String
+  openedAt   DateTime?
+  openCount  Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_track")
 }
 
 model CustomFilter {

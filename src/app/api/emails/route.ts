@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/gmail"
+import { randomBytes } from "crypto"
 
 export async function GET(req: NextRequest) {
   try {
@@ -50,10 +51,26 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { to, subject, html, replyToMessageId, gmailThreadId } = body
 
+    // Inject read-receipt tracking pixel (only for new threads, not replies)
+    let trackedHtml = html
+    if (!replyToMessageId) {
+      const trackingId = randomBytes(16).toString("hex")
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL!
+      trackedHtml += `<img src="${appUrl}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none"/>`
+      await prisma.emailTrack.create({
+        data: {
+          userId: session.user.id,
+          trackingId,
+          toEmail: Array.isArray(to) ? to[0] : to,
+          subject,
+        },
+      })
+    }
+
     const result = await sendEmail(session.user.id, {
       to,
       subject,
-      body: html,
+      body: trackedHtml,
       replyToMessageId,
       threadId: gmailThreadId,
     })
