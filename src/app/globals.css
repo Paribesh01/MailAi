@@ -198,3 +198,6 @@
 .category-ignore { @apply bg-slate-500/10 text-slate-500 border border-slate-400/20; }
 .inbox-gradient { background: linear-gradient(135deg, oklch(0.15 0.04 264), oklch(0.12 0.02 264)); }
 .sidebar-item-active { background: linear-gradient(135deg, oklch(0.45 0.22 264 / 0.15), oklch(0.45 0.18 300 / 0.1)); }
+
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { EmailCategory } from "@/types/email"
 import { cn } from "@/lib/utils"
-import { Plus, X, Loader2 } from "lucide-react"
+import { Plus, X, Loader2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
 type Category = EmailCategory | "ALL"
@@ -16,9 +16,10 @@ export interface CustomFilter {
 }
 
 export interface FilterConditions {
+  aiPrompt?: string
+  // kept for backwards compatibility
   senderContains?: string
   subjectContains?: string
-  bodyContains?: string
   category?: EmailCategory
   accountEmail?: string
   isUnread?: boolean
@@ -52,11 +53,7 @@ export function SplitTabs({ active, onChange, counts, linkedAccountEmails = [] }
   const [removing, setRemoving] = useState<string | null>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
 
-  const [form, setForm] = useState<{
-    name: string
-    color: string
-    conditions: FilterConditions
-  }>({ name: "", color: COLORS[0], conditions: {} })
+  const [form, setForm] = useState({ name: "", color: COLORS[0], aiPrompt: "" })
 
   useEffect(() => {
     fetch("/api/custom-filters")
@@ -65,7 +62,6 @@ export function SplitTabs({ active, onChange, counts, linkedAccountEmails = [] }
       .catch(() => {})
   }, [])
 
-  // Close popover on outside click
   useEffect(() => {
     if (!showPopover) return
     function handle(e: MouseEvent) {
@@ -78,18 +74,22 @@ export function SplitTabs({ active, onChange, counts, linkedAccountEmails = [] }
   }, [showPopover])
 
   async function saveFilter() {
-    if (!form.name.trim()) return
+    if (!form.name.trim() || !form.aiPrompt.trim()) return
     setSaving(true)
     try {
       const res = await fetch("/api/custom-filters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: form.name, color: form.color, conditions: form.conditions }),
+        body: JSON.stringify({
+          name: form.name,
+          color: form.color,
+          conditions: { aiPrompt: form.aiPrompt.trim() },
+        }),
       })
       const created: CustomFilter = await res.json()
       setCustomFilters((prev) => [...prev, created])
       setShowPopover(false)
-      setForm({ name: "", color: COLORS[0], conditions: {} })
+      setForm({ name: "", color: COLORS[0], aiPrompt: "" })
       toast.success(`Filter "${created.name}" created`)
     } catch {
       toast.error("Failed to create filter")
@@ -108,7 +108,7 @@ export function SplitTabs({ active, onChange, counts, linkedAccountEmails = [] }
         body: JSON.stringify({ id }),
       })
       setCustomFilters((prev) => prev.filter((f) => f.id !== id))
-      if (active === id) onChange("NEEDS_ATTENTION")
+      if (active === id) onChange("ALL")
     } catch {
       toast.error("Failed to delete filter")
     } finally {
@@ -116,244 +116,156 @@ export function SplitTabs({ active, onChange, counts, linkedAccountEmails = [] }
     }
   }
 
-  function setCondition<K extends keyof FilterConditions>(key: K, value: FilterConditions[K] | "") {
-    setForm((prev) => {
-      const next = { ...prev.conditions }
-      if (value === "" || value === false || value === undefined) {
-        delete next[key]
-      } else {
-        next[key] = value as FilterConditions[K]
-      }
-      return { ...prev, conditions: next }
-    })
-  }
-
   return (
-    <div className="flex items-center gap-1 px-4 py-3 border-b border-taupe bg-cream overflow-x-auto scrollbar-none">
-      {/* Built-in tabs */}
-      {BUILT_IN_TABS.map(({ value, label, activeBadge, inactiveBadge }) => {
-        const isActive = active === value
-        const count = counts[value] ?? 0
-        return (
-          <button
-            key={value}
-            onClick={() => onChange(value)}
-            className={cn(
-              "flex items-center gap-2 px-3.5 py-2 rounded-[10px] transition-all duration-150 cursor-pointer shrink-0",
-              isActive
-                ? "bg-white shadow-[0_1px_3px_rgba(45,42,38,0.08)] text-espresso font-semibold"
-                : "text-stone-warm hover:text-espresso font-medium"
-            )}
-          >
-            <span className="text-[14px] whitespace-nowrap">{label}</span>
-            {count > 0 && (
-              <span className={cn(
-                "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-medium",
-                isActive ? activeBadge : inactiveBadge
-              )}>
-                {count}
-              </span>
-            )}
-          </button>
-        )
-      })}
+    // Outer wrapper is relative so the popover escapes the scroll container
+    <div className="relative border-b border-taupe bg-cream">
+      {/* Scrollable tab row */}
+      <div className="flex items-center gap-1 px-4 py-2.5 overflow-x-auto scrollbar-none">
+        {BUILT_IN_TABS.map(({ value, label, activeBadge, inactiveBadge }) => {
+          const isActive = active === value
+          const count = counts[value] ?? 0
+          return (
+            <button
+              key={value}
+              onClick={() => onChange(value)}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-[10px] transition-all duration-150 cursor-pointer shrink-0",
+                isActive
+                  ? "bg-white shadow-[0_1px_3px_rgba(45,42,38,0.08)] text-espresso font-semibold"
+                  : "text-stone-warm hover:text-espresso font-medium"
+              )}
+            >
+              <span className="text-[14px] whitespace-nowrap">{label}</span>
+              {count > 0 && (
+                <span className={cn(
+                  "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-medium",
+                  isActive ? activeBadge : inactiveBadge
+                )}>
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })}
 
-      {/* Divider before custom filters */}
-      {customFilters.length > 0 && (
-        <div className="w-px h-5 bg-taupe mx-1 shrink-0" />
-      )}
+        {customFilters.length > 0 && <div className="w-px h-5 bg-taupe mx-1 shrink-0" />}
 
-      {/* Custom filter tabs */}
-      {customFilters.map((cf) => {
-        const isActive = active === cf.id
-        return (
-          <button
-            key={cf.id}
-            onClick={() => onChange(cf.id, cf)}
-            className={cn(
-              "group flex items-center gap-1.5 px-3 py-2 rounded-[10px] transition-all duration-150 cursor-pointer shrink-0",
-              isActive
-                ? "bg-white shadow-[0_1px_3px_rgba(45,42,38,0.08)] text-espresso font-semibold"
-                : "text-stone-warm hover:text-espresso font-medium"
-            )}
-          >
-            <span
-              className="w-2 h-2 rounded-full shrink-0"
-              style={{ backgroundColor: cf.color }}
-            />
-            <span className="text-[14px] whitespace-nowrap">{cf.name}</span>
-            {removing === cf.id ? (
-              <Loader2 className="w-3 h-3 animate-spin ml-0.5 text-stone-warm" />
-            ) : (
-              <span
-                onClick={(e) => removeFilter(cf.id, e)}
-                className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-taupe ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="w-2.5 h-2.5 text-stone-warm" />
-              </span>
-            )}
-          </button>
-        )
-      })}
+        {customFilters.map((cf) => {
+          const isActive = active === cf.id
+          return (
+            <button
+              key={cf.id}
+              onClick={() => onChange(cf.id, cf)}
+              className={cn(
+                "group flex items-center gap-1.5 px-3 py-2 rounded-[10px] transition-all duration-150 cursor-pointer shrink-0",
+                isActive
+                  ? "bg-white shadow-[0_1px_3px_rgba(45,42,38,0.08)] text-espresso font-semibold"
+                  : "text-stone-warm hover:text-espresso font-medium"
+              )}
+            >
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cf.color }} />
+              <span className="text-[14px] whitespace-nowrap">{cf.name}</span>
+              {removing === cf.id ? (
+                <Loader2 className="w-3 h-3 animate-spin ml-0.5 text-stone-warm" />
+              ) : (
+                <span
+                  onClick={(e) => removeFilter(cf.id, e)}
+                  className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-taupe ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-2.5 h-2.5 text-stone-warm" />
+                </span>
+              )}
+            </button>
+          )
+        })}
 
-      {/* Add filter button + popover */}
-      <div className="relative ml-1 shrink-0" ref={popoverRef}>
+        {/* Add button — inside scroll area so it's always at the end of the tab list */}
         <button
           onClick={() => setShowPopover((v) => !v)}
           className={cn(
-            "flex items-center justify-center w-7 h-7 rounded-full border border-taupe transition-colors",
+            "ml-1 flex items-center justify-center w-7 h-7 rounded-full border border-taupe transition-colors shrink-0",
             showPopover ? "bg-taupe text-espresso" : "text-stone-warm hover:bg-taupe/60 hover:text-espresso"
           )}
-          title="Add custom filter"
         >
           <Plus className="w-3.5 h-3.5" />
         </button>
+      </div>
 
-        {showPopover && (
-          <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl border border-taupe shadow-[0_8px_32px_rgba(45,42,38,0.12)] z-50 p-4 space-y-3">
-            <p className="text-[13px] font-semibold text-espresso">New custom filter</p>
+      {/* Popover — positioned on the OUTER relative wrapper, not inside overflow-x-auto */}
+      {showPopover && (
+        <div
+          ref={popoverRef}
+          className="absolute left-4 top-full mt-1 w-80 bg-white rounded-2xl border border-taupe shadow-[0_8px_32px_rgba(45,42,38,0.14)] z-50 p-5 space-y-4"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-slate-blue" />
+            <p className="text-[14px] font-semibold text-espresso">New custom filter</p>
+          </div>
 
-            {/* Name */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-stone-warm uppercase tracking-wide">Name</label>
-              <input
-                autoFocus
-                value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                onKeyDown={(e) => { if (e.key === "Enter") saveFilter() }}
-                placeholder="e.g. Finance, Work, Newsletters…"
-                className="w-full h-8 px-2.5 text-sm rounded-lg border border-taupe bg-cream focus:outline-none focus:ring-1 focus:ring-slate-blue/40 text-espresso placeholder:text-stone-warm/50"
-              />
-            </div>
-
-            {/* Color */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-stone-warm uppercase tracking-wide">Color</label>
-              <div className="flex gap-1.5 flex-wrap">
-                {COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setForm((p) => ({ ...p, color: c }))}
-                    className={cn(
-                      "w-5 h-5 rounded-full transition-transform",
-                      form.color === c ? "ring-2 ring-offset-1 scale-110" : "hover:scale-110"
-                    )}
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="w-full h-px bg-taupe" />
-            <p className="text-[11px] font-medium text-stone-warm uppercase tracking-wide">Conditions <span className="normal-case font-normal">(all optional)</span></p>
-
-            {/* Sender contains */}
-            <ConditionInput
-              label="Sender contains"
-              value={form.conditions.senderContains ?? ""}
-              onChange={(v) => setCondition("senderContains", v)}
-              placeholder="e.g. bank.com, boss@"
+          {/* Name */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-stone-warm uppercase tracking-wide">Filter name</label>
+            <input
+              autoFocus
+              value={form.name}
+              onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+              placeholder="e.g. Job offers, Finance, Work"
+              className="w-full h-9 px-3 text-sm rounded-xl border border-taupe bg-cream focus:outline-none focus:ring-2 focus:ring-slate-blue/20 text-espresso placeholder:text-stone-warm/40"
             />
+          </div>
 
-            {/* Subject contains */}
-            <ConditionInput
-              label="Subject contains"
-              value={form.conditions.subjectContains ?? ""}
-              onChange={(v) => setCondition("subjectContains", v)}
-              placeholder="e.g. invoice, meeting"
+          {/* AI Prompt */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-stone-warm uppercase tracking-wide flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-slate-blue" /> AI filter condition
+            </label>
+            <textarea
+              value={form.aiPrompt}
+              onChange={(e) => setForm((p) => ({ ...p, aiPrompt: e.target.value }))}
+              placeholder="Describe what emails belong here, e.g. 'emails about job opportunities or interview invitations' or 'messages from my bank or about payments'"
+              rows={3}
+              className="w-full px-3 py-2 text-sm rounded-xl border border-taupe bg-cream focus:outline-none focus:ring-2 focus:ring-slate-blue/20 text-espresso placeholder:text-stone-warm/40 resize-none leading-relaxed"
             />
+            <p className="text-[11px] text-stone-warm/70">AI reads each email and decides if it matches your description.</p>
+          </div>
 
-            {/* Category */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-stone-warm uppercase tracking-wide">Category</label>
-              <select
-                value={form.conditions.category ?? ""}
-                onChange={(e) => setCondition("category", e.target.value as EmailCategory | "")}
-                className="w-full h-8 px-2 text-sm rounded-lg border border-taupe bg-cream focus:outline-none text-espresso"
-              >
-                <option value="">Any</option>
-                <option value="NEEDS_ATTENTION">Needs Attention</option>
-                <option value="CAN_WAIT">Can Wait</option>
-                <option value="IGNORE">Ignore</option>
-              </select>
-            </div>
-
-            {/* Account (only if linked accounts exist) */}
-            {linkedAccountEmails.length > 0 && (
-              <div className="space-y-1">
-                <label className="text-[11px] font-medium text-stone-warm uppercase tracking-wide">Account</label>
-                <select
-                  value={form.conditions.accountEmail ?? ""}
-                  onChange={(e) => setCondition("accountEmail", e.target.value)}
-                  className="w-full h-8 px-2 text-sm rounded-lg border border-taupe bg-cream focus:outline-none text-espresso"
-                >
-                  <option value="">Any account</option>
-                  <option value="__primary__">Primary account</option>
-                  {linkedAccountEmails.map((email) => (
-                    <option key={email} value={email}>{email}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Boolean toggles */}
-            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-              {([
-                ["isUnread", "Unread only"],
-                ["isStarred", "Starred only"],
-                ["hasFollowUp", "Has follow-up"],
-              ] as [keyof FilterConditions, string][]).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!!form.conditions[key]}
-                    onChange={(e) => setCondition(key, e.target.checked || undefined)}
-                    className="w-3.5 h-3.5 rounded accent-slate-blue"
-                  />
-                  <span className="text-xs text-espresso">{label}</span>
-                </label>
+          {/* Color */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-stone-warm uppercase tracking-wide">Color</label>
+            <div className="flex gap-2 flex-wrap">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setForm((p) => ({ ...p, color: c }))}
+                  className={cn(
+                    "w-6 h-6 rounded-full transition-transform",
+                    form.color === c ? "ring-2 ring-offset-2 scale-110" : "hover:scale-110"
+                  )}
+                  style={{ backgroundColor: c, outlineColor: c }}
+                />
               ))}
             </div>
-
-            {/* Actions */}
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={saveFilter}
-                disabled={saving || !form.name.trim()}
-                className="flex-1 h-8 rounded-lg bg-espresso text-white text-xs font-semibold hover:bg-espresso/85 transition-colors disabled:opacity-40 flex items-center justify-center gap-1.5"
-              >
-                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                {saving ? "Creating…" : "Create filter"}
-              </button>
-              <button
-                onClick={() => setShowPopover(false)}
-                className="h-8 px-3 rounded-lg border border-taupe text-xs text-stone-warm hover:border-stone-warm transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
-        )}
-      </div>
-    </div>
-  )
-}
 
-function ConditionInput({ label, value, onChange, placeholder }: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  placeholder: string
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-[11px] font-medium text-stone-warm uppercase tracking-wide">{label}</label>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full h-8 px-2.5 text-sm rounded-lg border border-taupe bg-cream focus:outline-none focus:ring-1 focus:ring-slate-blue/40 text-espresso placeholder:text-stone-warm/50"
-      />
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={saveFilter}
+              disabled={saving || !form.name.trim() || !form.aiPrompt.trim()}
+              className="flex-1 h-9 rounded-xl bg-espresso text-white text-xs font-semibold hover:bg-espresso/85 transition-colors disabled:opacity-40 flex items-center justify-center gap-1.5"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              {saving ? "Creating…" : "Create filter"}
+            </button>
+            <button
+              onClick={() => setShowPopover(false)}
+              className="h-9 px-4 rounded-xl border border-taupe text-xs text-stone-warm hover:border-stone-warm transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

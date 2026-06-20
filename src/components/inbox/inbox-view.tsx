@@ -41,6 +41,8 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [aiFilteredIds, setAiFilteredIds] = useState<Set<string> | null>(null)
+  const [aiFiltering, setAiFiltering] = useState(false)
 
   const isStarred = searchParams.get("starred") === "true"
   const isSnoozed = searchParams.get("snoozed") === "true"
@@ -197,7 +199,31 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
     })
   }
 
-  const displayThreads = searchResults ?? applyCustomFilter(threads, activeCustomFilter)
+  // When active filter has an aiPrompt, call AI to classify threads
+  useEffect(() => {
+    const prompt = activeCustomFilter?.conditions?.aiPrompt
+    if (!prompt || !threads.length) { setAiFilteredIds(null); return }
+    setAiFiltering(true)
+    const payload = threads.map((t) => ({
+      id: t.id, subject: t.subject, snippet: t.snippet,
+      participantNames: t.participantNames, participantEmails: t.participantEmails,
+    }))
+    fetch("/api/ai/filter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ threads: payload, aiPrompt: prompt }),
+    })
+      .then((r) => r.json())
+      .then((d) => setAiFilteredIds(new Set(d.matchingIds ?? [])))
+      .catch(() => setAiFilteredIds(null))
+      .finally(() => setAiFiltering(false))
+  }, [activeCustomFilter, threads])
+
+  const displayThreads = searchResults ?? (
+    activeCustomFilter?.conditions?.aiPrompt
+      ? (aiFilteredIds ? threads.filter((t) => aiFilteredIds.has(t.id)) : threads)
+      : applyCustomFilter(threads, activeCustomFilter)
+  )
 
   useKeyboardShortcuts({
     threads: displayThreads,
@@ -253,6 +279,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
             onChange={(cat, cf) => {
               setActiveCategory(cat)
               setActiveCustomFilter(cf ?? null)
+              setAiFilteredIds(null)
               setPage(1)
             }}
             counts={counts}
@@ -268,6 +295,14 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
               onClear={() => setSelectedIds(new Set())}
               onUpdate={updateThread}
             />
+          </div>
+        )}
+
+        {/* AI filtering banner */}
+        {aiFiltering && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-blue-light border-b border-taupe text-xs text-slate-blue">
+            <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="32" strokeDashoffset="12" /></svg>
+            AI is reading your emails…
           </div>
         )}
 

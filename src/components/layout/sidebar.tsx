@@ -75,35 +75,35 @@ export function Sidebar({ user }: SidebarProps) {
 
       <div className="w-6 h-px bg-taupe my-1.5" />
 
-      {/* Nav */}
-      {NAV.map(({ href, icon: Icon, label }) => {
-        const active = href === "/inbox"
-          ? pathname === "/inbox" && (typeof window !== "undefined" ? !window.location.search : true)
-          : href.startsWith("/inbox?")
-          ? pathname + (typeof window !== "undefined" ? window.location.search : "") === href
-          : pathname === href
+      {/* Nav — scrollable so all items remain reachable */}
+      <div className="flex-1 flex flex-col items-center gap-1 overflow-y-auto w-full px-2 scrollbar-none">
+        {NAV.map(({ href, icon: Icon, label }) => {
+          const active = href === "/inbox"
+            ? pathname === "/inbox" && (typeof window !== "undefined" ? !window.location.search : true)
+            : href.startsWith("/inbox?")
+            ? pathname + (typeof window !== "undefined" ? window.location.search : "") === href
+            : pathname === href
 
-        return (
-          <Tooltip key={label}>
-            <TooltipTrigger render={
-              <Link
-                href={href}
-                className={cn(
-                  "flex items-center justify-center w-9 h-9 rounded-full transition-colors duration-150",
-                  active
-                    ? "bg-sand-light text-espresso"
-                    : "text-stone-warm hover:bg-sand-light/50"
-                )}
-              >
-                <Icon className="w-[18px] h-[18px]" />
-              </Link>
-            } />
-            <TooltipContent side="right">{label}</TooltipContent>
-          </Tooltip>
-        )
-      })}
-
-      <div className="flex-1" />
+          return (
+            <Tooltip key={label}>
+              <TooltipTrigger render={
+                <Link
+                  href={href}
+                  className={cn(
+                    "flex items-center justify-center w-9 h-9 rounded-full transition-colors duration-150 shrink-0",
+                    active
+                      ? "bg-sand-light text-espresso"
+                      : "text-stone-warm hover:bg-sand-light/50"
+                  )}
+                >
+                  <Icon className="w-[18px] h-[18px]" />
+                </Link>
+              } />
+              <TooltipContent side="right">{label}</TooltipContent>
+            </Tooltip>
+          )
+        })}
+      </div>
 
       {/* Settings */}
       <Tooltip>
