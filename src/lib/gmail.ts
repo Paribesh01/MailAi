@@ -187,12 +187,12 @@ function parseMessage(msg: any): GmailMessage {
   }
 }
 
-async function fetchThreadsWithClient(gmail: ReturnType<typeof google.gmail>, maxResults: number, pageToken?: string) {
+async function fetchThreadsWithClient(gmail: ReturnType<typeof google.gmail>, maxResults: number, pageToken?: string, q = "in:inbox") {
   const res = await gmail.users.threads.list({
     userId: "me",
     maxResults,
     pageToken,
-    q: "in:inbox",
+    q,
   })
 
   const threadList = res.data.threads ?? []
@@ -350,4 +350,33 @@ export async function searchEmails(userId: string, query: string, maxResults = 2
   const gmail = await getGmailClient(userId)
   const res = await gmail.users.threads.list({ userId: "me", q: query, maxResults })
   return res.data.threads ?? []
+}
+
+export async function fetchTrashedThreads(userId: string, maxResults = 50) {
+  const gmail = await getGmailClient(userId)
+  return fetchThreadsWithClient(gmail, maxResults, undefined, "in:trash")
+}
+
+export async function fetchSpamThreads(userId: string, maxResults = 50) {
+  const gmail = await getGmailClient(userId)
+  return fetchThreadsWithClient(gmail, maxResults, undefined, "in:spam")
+}
+
+export async function restoreThread(userId: string, threadId: string) {
+  const gmail = await getGmailClient(userId)
+  await gmail.users.threads.untrash({ userId: "me", id: threadId })
+}
+
+export async function markNotSpam(userId: string, threadId: string) {
+  const gmail = await getGmailClient(userId)
+  await gmail.users.threads.modify({
+    userId: "me",
+    id: threadId,
+    requestBody: { removeLabelIds: ["SPAM"], addLabelIds: ["INBOX"] },
+  })
+}
+
+export async function permanentlyDeleteThread(userId: string, threadId: string) {
+  const gmail = await getGmailClient(userId)
+  await gmail.users.threads.delete({ userId: "me", id: threadId })
 }

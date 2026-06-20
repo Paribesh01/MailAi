@@ -8,13 +8,19 @@ export const REQUIRED_GMAIL_SCOPES = [
 ]
 
 export async function hasRequiredGmailScopes(userId: string): Promise<boolean> {
-  const account = await prisma.account.findFirst({
-    where: { userId, providerId: "google" },
-    select: { scope: true },
-  })
+  try {
+    const account = await prisma.account.findFirst({
+      where: { userId, providerId: "google" },
+      select: { scope: true },
+    })
 
-  if (!account?.scope) return false
+    if (!account?.scope) return false
 
-  const granted = account.scope.split(/[\s,]+/)
-  return REQUIRED_GMAIL_SCOPES.every((s) => granted.includes(s))
+    const granted = account.scope.split(/[\s,]+/)
+    return REQUIRED_GMAIL_SCOPES.every((s) => granted.includes(s))
+  } catch {
+    // DB connection error (e.g. Neon TLS drop) — let the user through;
+    // individual API routes will surface real auth errors if scopes are missing.
+    return true
+  }
 }

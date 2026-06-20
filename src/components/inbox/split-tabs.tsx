@@ -27,6 +27,7 @@ export interface FilterConditions {
 }
 
 const BUILT_IN_TABS: { value: Category; label: string; activeBadge: string; inactiveBadge: string }[] = [
+  { value: "ALL", label: "All", activeBadge: "bg-taupe text-stone-warm", inactiveBadge: "bg-espresso text-white" },
   { value: "NEEDS_ATTENTION", label: "Needs Attention", activeBadge: "bg-coral-light text-coral", inactiveBadge: "bg-coral text-white" },
   { value: "CAN_WAIT", label: "Can Wait", activeBadge: "bg-sage-light text-sage", inactiveBadge: "bg-sage text-white" },
   { value: "IGNORE", label: "Ignore", activeBadge: "bg-taupe text-stone-warm", inactiveBadge: "bg-tan text-stone-warm" },
