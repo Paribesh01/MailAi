@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import Groq from "groq-sdk"
+import { decryptEmail } from "@/lib/crypto"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
 
@@ -56,7 +57,10 @@ export async function POST(req: NextRequest) {
     if (!thread) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const emailBodies = thread.emails
-      .map((e) => e.bodyText || e.snippet || "")
+      .map((e) => {
+        const dec = decryptEmail(e, session.user.id)
+        return dec.bodyText || dec.snippet || ""
+      })
       .filter(Boolean)
       .join("\n\n---\n\n")
 

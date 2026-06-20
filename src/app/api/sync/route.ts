@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { fetchThreads } from "@/lib/gmail"
 import { categorizeEmail } from "@/lib/ai"
+import { encrypt } from "@/lib/crypto"
 
 export async function POST() {
   try {
@@ -39,14 +40,17 @@ export async function POST() {
         }
       }
 
+      const encSnippet = encrypt(t.snippet, userId)
+      const encAiSummary = aiSummary ? encrypt(aiSummary, userId) : null
+
       const thread = await prisma.thread.upsert({
         where: { gmailThreadId: t.gmailThreadId },
         create: {
           gmailThreadId: t.gmailThreadId,
           subject: t.subject,
-          snippet: t.snippet,
+          snippet: encSnippet,
           category,
-          aiSummary,
+          aiSummary: encAiSummary,
           lastMessageAt: t.lastMessageAt,
           participantEmails: t.participantEmails,
           participantNames: t.participantNames,
@@ -54,7 +58,7 @@ export async function POST() {
           userId,
         },
         update: {
-          snippet: t.snippet,
+          snippet: encSnippet,
           lastMessageAt: t.lastMessageAt,
           participantEmails: t.participantEmails,
           participantNames: t.participantNames,
@@ -62,7 +66,7 @@ export async function POST() {
         },
       })
 
-      // Upsert each message
+      // Upsert each message — encrypt body and snippet at rest
       for (const msg of t.messages) {
         await prisma.email.upsert({
           where: { gmailMessageId: msg.gmailMessageId },
@@ -75,9 +79,9 @@ export async function POST() {
             cc: msg.cc,
             bcc: msg.bcc,
             subject: msg.subject,
-            bodyHtml: msg.bodyHtml,
-            bodyText: msg.bodyText,
-            snippet: msg.snippet,
+            bodyHtml: msg.bodyHtml ? encrypt(msg.bodyHtml, userId) : null,
+            bodyText: msg.bodyText ? encrypt(msg.bodyText, userId) : null,
+            snippet: encrypt(msg.snippet, userId),
             isRead: msg.isRead,
             internalDate: msg.internalDate,
             headers: msg.headers as any,

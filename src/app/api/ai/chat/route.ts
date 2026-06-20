@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import Groq from "groq-sdk"
+import { safeDecrypt } from "@/lib/crypto"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
 
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
             const sender = t.participantNames[0] ?? t.participantEmails[0] ?? "Unknown"
             const cat = t.category.replace("_", " ")
             const unread = t.isRead ? "" : " [UNREAD]"
-            const summary = t.aiSummary ? ` — ${t.aiSummary}` : ""
+            const summary = t.aiSummary ? ` — ${safeDecrypt(t.aiSummary, userId)}` : ""
             return `• "${t.subject}" from ${sender} (${cat})${unread}${summary}`
           })
           .join("\n")

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { draftReply } from "@/lib/ai"
+import { decryptEmail } from "@/lib/crypto"
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,11 +17,14 @@ export async function POST(req: NextRequest) {
 
     const prefs = await prisma.userPreferences.findUnique({ where: { userId: session.user.id } })
 
-    const history = thread.emails.map((e) => ({
-      from: e.fromName ? `${e.fromName} <${e.from}>` : e.from,
-      body: e.bodyText || e.snippet,
-      date: e.internalDate.toLocaleDateString(),
-    }))
+    const history = thread.emails.map((e) => {
+      const dec = decryptEmail(e, session.user.id)
+      return {
+        from: dec.fromName ? `${dec.fromName} <${dec.from}>` : dec.from,
+        body: dec.bodyText || dec.snippet,
+        date: dec.internalDate.toLocaleDateString(),
+      }
+    })
 
     const draft = await draftReply({
       threadHistory: history,

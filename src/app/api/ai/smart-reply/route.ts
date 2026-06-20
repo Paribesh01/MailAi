@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import Groq from "groq-sdk"
+import { decryptEmail } from "@/lib/crypto"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
 
@@ -25,13 +26,10 @@ export async function POST(req: NextRequest) {
     const lastEmail = thread.emails[0]
     if (!lastEmail) return NextResponse.json({ error: "No emails in thread" }, { status: 400 })
 
-    const subject = lastEmail.subject || "(no subject)"
-    const sender = lastEmail.fromName
-      ? `${lastEmail.fromName} <${lastEmail.from}>`
-      : lastEmail.from
-    const snippet = lastEmail.bodyText
-      ? lastEmail.bodyText.slice(0, 500)
-      : lastEmail.snippet || ""
+    const dec = decryptEmail(lastEmail, session.user.id)
+    const subject = dec.subject || "(no subject)"
+    const sender = dec.fromName ? `${dec.fromName} <${dec.from}>` : dec.from
+    const snippet = dec.bodyText ? dec.bodyText.slice(0, 500) : dec.snippet || ""
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",

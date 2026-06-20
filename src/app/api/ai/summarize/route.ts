@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { summarizeThread } from "@/lib/ai"
+import { decryptEmail, encrypt } from "@/lib/crypto"
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,15 +15,21 @@ export async function POST(req: NextRequest) {
     })
     if (!thread) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const messages = thread.emails.map((e) => ({
-      from: e.fromName ? `${e.fromName} <${e.from}>` : e.from,
-      body: e.bodyText || e.snippet,
-      date: e.internalDate.toLocaleDateString(),
-    }))
+    const messages = thread.emails.map((e) => {
+      const dec = decryptEmail(e, session.user.id)
+      return {
+        from: dec.fromName ? `${dec.fromName} <${dec.from}>` : dec.from,
+        body: dec.bodyText || dec.snippet,
+        date: dec.internalDate.toLocaleDateString(),
+      }
+    })
 
     const summary = await summarizeThread(messages)
 
-    await prisma.thread.update({ where: { id: thread.id }, data: { aiSummary: summary } })
+    await prisma.thread.update({
+      where: { id: thread.id },
+      data: { aiSummary: encrypt(summary, session.user.id) },
+    })
 
     return NextResponse.json({ summary })
   } catch (err: unknown) {

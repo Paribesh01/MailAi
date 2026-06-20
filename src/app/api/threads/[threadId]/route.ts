@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { archiveThread, starThread, deleteThread, markAsRead, fetchThread } from "@/lib/gmail"
+import { encrypt, decryptThread } from "@/lib/crypto"
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ threadId: string }> }) {
   try {
@@ -38,9 +39,9 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ thread
                 cc: msg.cc,
                 bcc: msg.bcc,
                 subject: msg.subject,
-                bodyHtml: msg.bodyHtml,
-                bodyText: msg.bodyText,
-                snippet: msg.snippet,
+                bodyHtml: msg.bodyHtml ? encrypt(msg.bodyHtml, session.user.id) : null,
+                bodyText: msg.bodyText ? encrypt(msg.bodyText, session.user.id) : null,
+                snippet: encrypt(msg.snippet, session.user.id),
                 isRead: msg.isRead,
                 internalDate: msg.internalDate,
                 headers: msg.headers as any,
@@ -78,7 +79,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ thread
               prisma.thread.update({ where: { id: threadId }, data: { isRead: true } }),
             ])
           }
-          return NextResponse.json({ ...updated, isRead: true })
+          return NextResponse.json(decryptThread({ ...updated, isRead: true }, session.user.id))
         }
       }
     } catch {
@@ -95,7 +96,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ thread
       ])
     }
 
-    return NextResponse.json(thread)
+    return NextResponse.json(decryptThread(thread, session.user.id))
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error"
     return NextResponse.json({ error: msg }, { status: 500 })
