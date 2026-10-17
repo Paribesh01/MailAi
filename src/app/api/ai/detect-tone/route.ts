@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { google } from "googleapis"
 import Groq from "groq-sdk"
+import { SMART_MODEL } from "@/lib/ai"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
 
@@ -80,7 +81,8 @@ export async function POST() {
   const sample = bodies.slice(0, 10).join("\n\n---\n\n")
 
   const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+    model: SMART_MODEL,
+    reasoning_effort: "low",
     messages: [
       {
         role: "user",
@@ -93,7 +95,7 @@ Reply with ONLY the tone word — nothing else.`,
       },
     ],
     temperature: 0,
-    max_tokens: 10,
+    max_tokens: 300,
   })
 
   const raw = completion.choices[0]?.message?.content?.trim() ?? ""

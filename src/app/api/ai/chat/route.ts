@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import Groq from "groq-sdk"
+import { SMART_MODEL } from "@/lib/ai"
 import { safeDecrypt } from "@/lib/crypto"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
@@ -107,7 +108,8 @@ ${repliesList}
 Answer based on this data. For anything outside this data, say so clearly. Keep answers under 150 words unless the user asks for detail.`
 
     const res = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: SMART_MODEL,
+      reasoning_effort: "low",
       messages: [
         { role: "system", content: systemPrompt },
         ...history.map((h: { role: string; content: string }) => ({
@@ -117,7 +119,7 @@ Answer based on this data. For anything outside this data, say so clearly. Keep 
         { role: "user", content: message },
       ],
       temperature: 0.5,
-      max_tokens: 400,
+      max_tokens: 1000,
     })
 
     const reply = res.choices[0]?.message?.content ?? "I couldn't process that. Try again."

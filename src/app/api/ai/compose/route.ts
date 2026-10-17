@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import Groq from "groq-sdk"
+import { SMART_MODEL } from "@/lib/ai"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
 
@@ -10,7 +11,8 @@ export async function POST(req: NextRequest) {
     const { to, subject, instruction, tone = "Friendly" } = await req.json()
 
     const res = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: SMART_MODEL,
+      reasoning_effort: "low",
       messages: [
         {
           role: "system",
