@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
-import { fetchThreads, fetchThreadsForLinkedAccount } from "@/lib/gmail"
+import { fetchThreads, fetchThreadsForLinkedAccount, isGmailQuotaError } from "@/lib/gmail"
 import { categorizeEmail } from "@/lib/ai"
 import { encrypt } from "@/lib/crypto"
 import type { GmailThread } from "@/lib/gmail"
@@ -62,6 +62,7 @@ async function syncThreadBatch(
         participantEmails: t.participantEmails,
         participantNames: t.participantNames,
         messageCount: t.messageCount,
+        historyId: t.historyId ?? null,
         accountEmail,
         userId,
       },
@@ -71,6 +72,7 @@ async function syncThreadBatch(
         participantEmails: t.participantEmails,
         participantNames: t.participantNames,
         messageCount: t.messageCount,
+        historyId: t.historyId ?? null,
         ...(accountEmail !== null ? { accountEmail } : {}),
       },
     })
@@ -128,11 +130,18 @@ export async function POST() {
     })
     const vipSet = new Set(vipContacts.map((v) => v.email.toLowerCase()))
 
+    // Only threads whose Gmail historyId changed get re-fetched in full
+    const known = await prisma.thread.findMany({
+      where: { userId },
+      select: { gmailThreadId: true, historyId: true },
+    })
+    const knownHistoryIds = new Map(known.map((t) => [t.gmailThreadId, t.historyId]))
+
     let totalSynced = 0
     let totalNew = 0
 
     // Sync primary account (accountEmail = null means primary)
-    const { threads: primaryThreads } = await fetchThreads(userId, 50)
+    const { threads: primaryThreads } = await fetchThreads(userId, 50, undefined, knownHistoryIds)
     const primary = await syncThreadBatch(primaryThreads, userId, null, vipSet)
     totalSynced += primary.synced
     totalNew += primary.newThreads
@@ -145,7 +154,7 @@ export async function POST() {
 
     for (const linked of linkedAccounts) {
       try {
-        const { threads: linkedThreads } = await fetchThreadsForLinkedAccount(linked.id, 50)
+        const { threads: linkedThreads } = await fetchThreadsForLinkedAccount(linked.id, 50, knownHistoryIds)
         const result = await syncThreadBatch(linkedThreads, userId, linked.email, vipSet)
         totalSynced += result.synced
         totalNew += result.newThreads
@@ -162,6 +171,12 @@ export async function POST() {
 
     return NextResponse.json({ synced: totalSynced, newThreads: totalNew })
   } catch (err: any) {
+    if (isGmailQuotaError(err)) {
+      return NextResponse.json(
+        { error: "Gmail rate limit reached. Try again in a minute.", rateLimited: true },
+        { status: 429, headers: { "Retry-After": "60" } }
+      )
+    }
     return NextResponse.json({ error: err.message }, { status: 500 })
   } finally {
     if (userId) syncLocks.delete(userId)

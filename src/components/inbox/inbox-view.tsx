@@ -35,6 +35,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   const [newEmailsBanner, setNewEmailsBanner] = useState(false)
   const hasAutoSynced = useRef(false)
   const isPolling = useRef(false)
+  const pollPausedUntil = useRef(0)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Thread[] | null>(null)
   const [composeOpen, setComposeOpen] = useState(false)
@@ -100,6 +101,12 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
     try {
       const res = await fetch("/api/sync", { method: "POST" })
       const data = await res.json()
+      if (res.status === 429) {
+        pollPausedUntil.current = Date.now() + 2 * 60_000
+        toast.error(data.error ?? "Gmail rate limit reached. Try again in a minute.")
+        return
+      }
+      if (data.error) toast.error(data.error)
       if (data.newThreads > 0) toast.success(`${data.newThreads} new email${data.newThreads > 1 ? "s" : ""}`)
       await fetchThreads(1)
     } catch {
@@ -130,10 +137,16 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   // Background poll every 60 s — silent, only notifies on genuinely new threads
   useEffect(() => {
     const poll = async () => {
-      if (isPolling.current || syncing) return
+      // Skip hidden tabs and back off after a rate limit to save Gmail quota
+      if (isPolling.current || syncing || document.hidden) return
+      if (Date.now() < pollPausedUntil.current) return
       isPolling.current = true
       try {
         const res = await fetch("/api/sync", { method: "POST" })
+        if (res.status === 429) {
+          pollPausedUntil.current = Date.now() + 2 * 60_000
+          return
+        }
         const data = await res.json()
         if (data.newThreads > 0) {
           setNewEmailsBanner(true)

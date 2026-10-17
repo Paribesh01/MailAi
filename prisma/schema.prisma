@@ -109,6 +109,7 @@ model Thread {
   participantEmails String[]
   participantNames  String[]
   messageCount      Int           @default(1)
+  historyId         String?
   aiSummary         String?       @db.Text
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt

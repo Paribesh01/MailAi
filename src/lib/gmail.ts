@@ -76,6 +76,7 @@ export interface GmailThread {
   participantEmails: string[]
   participantNames: string[]
   messageCount: number
+  historyId?: string | null
   messages: GmailMessage[]
 }
 
@@ -187,7 +188,39 @@ function parseMessage(msg: any): GmailMessage {
   }
 }
 
-async function fetchThreadsWithClient(gmail: ReturnType<typeof google.gmail>, maxResults: number, pageToken?: string, q = "in:inbox") {
+// threads.get costs 10 quota units each, so cap how many run at once
+const DETAIL_CONCURRENCY = 10
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
+export function isGmailQuotaError(err: unknown): boolean {
+  const e = err as { code?: number; status?: number; message?: string }
+  const status = e?.code ?? e?.status
+  return status === 429 || (status === 403 && /quota|rate limit/i.test(e?.message ?? ""))
+}
+
+/**
+ * `knownHistoryIds` maps gmailThreadId -> historyId already stored locally.
+ * Threads whose historyId is unchanged are skipped, saving a threads.get call each.
+ */
+async function fetchThreadsWithClient(
+  gmail: ReturnType<typeof google.gmail>,
+  maxResults: number,
+  pageToken?: string,
+  q = "in:inbox",
+  knownHistoryIds?: Map<string, string | null>
+) {
   const res = await gmail.users.threads.list({
     userId: "me",
     maxResults,
@@ -195,55 +228,65 @@ async function fetchThreadsWithClient(gmail: ReturnType<typeof google.gmail>, ma
     q,
   })
 
-  const threadList = res.data.threads ?? []
-
-  const threads = await Promise.all(
-    threadList.map(async (t) => {
-      const detail = await gmail.users.threads.get({
-        userId: "me",
-        id: t.id!,
-        format: "full",
-      })
-
-      const messages = (detail.data.messages ?? []).map(parseMessage)
-      const first = messages[0]
-      const last = messages[messages.length - 1]
-
-      const allParticipants = messages.flatMap((m) => [
-        { email: m.from, name: m.fromName },
-        ...m.to.map((e) => ({ email: e, name: "" })),
-      ])
-      const seen = new Set<string>()
-      const uniqueParticipants = allParticipants.filter((p) => {
-        if (seen.has(p.email)) return false
-        seen.add(p.email)
-        return true
-      })
-
-      return {
-        gmailThreadId: t.id!,
-        subject: first?.subject ?? "(no subject)",
-        snippet: last?.snippet ?? detail.data.snippet ?? "",
-        lastMessageAt: last?.internalDate ?? new Date(),
-        participantEmails: uniqueParticipants.map((p) => p.email),
-        participantNames: uniqueParticipants.map((p) => p.name),
-        messageCount: messages.length,
-        messages,
-      } satisfies GmailThread
-    })
+  const threadList = (res.data.threads ?? []).filter(
+    (t) => !t.historyId || knownHistoryIds?.get(t.id!) !== t.historyId
   )
+
+  const threads = await mapWithConcurrency(threadList, DETAIL_CONCURRENCY, async (t) => {
+    const detail = await gmail.users.threads.get({
+      userId: "me",
+      id: t.id!,
+      format: "full",
+    })
+
+    const messages = (detail.data.messages ?? []).map(parseMessage)
+    const first = messages[0]
+    const last = messages[messages.length - 1]
+
+    const allParticipants = messages.flatMap((m) => [
+      { email: m.from, name: m.fromName },
+      ...m.to.map((e) => ({ email: e, name: "" })),
+    ])
+    const seen = new Set<string>()
+    const uniqueParticipants = allParticipants.filter((p) => {
+      if (seen.has(p.email)) return false
+      seen.add(p.email)
+      return true
+    })
+
+    return {
+      gmailThreadId: t.id!,
+      subject: first?.subject ?? "(no subject)",
+      snippet: last?.snippet ?? detail.data.snippet ?? "",
+      lastMessageAt: last?.internalDate ?? new Date(),
+      participantEmails: uniqueParticipants.map((p) => p.email),
+      participantNames: uniqueParticipants.map((p) => p.name),
+      messageCount: messages.length,
+      historyId: t.historyId ?? detail.data.historyId ?? null,
+      messages,
+    } satisfies GmailThread
+  })
 
   return { threads, nextPageToken: res.data.nextPageToken }
 }
 
-export async function fetchThreadsForLinkedAccount(linkedAccountId: string, maxResults = 50) {
+export async function fetchThreadsForLinkedAccount(
+  linkedAccountId: string,
+  maxResults = 50,
+  knownHistoryIds?: Map<string, string | null>
+) {
   const gmail = await getLinkedGmailClient(linkedAccountId)
-  return fetchThreadsWithClient(gmail, maxResults)
+  return fetchThreadsWithClient(gmail, maxResults, undefined, "in:inbox", knownHistoryIds)
 }
 
-export async function fetchThreads(userId: string, maxResults = 50, pageToken?: string) {
+export async function fetchThreads(
+  userId: string,
+  maxResults = 50,
+  pageToken?: string,
+  knownHistoryIds?: Map<string, string | null>
+) {
   const gmail = await getGmailClient(userId)
-  return fetchThreadsWithClient(gmail, maxResults, pageToken)
+  return fetchThreadsWithClient(gmail, maxResults, pageToken, "in:inbox", knownHistoryIds)
 }
 
 export async function fetchThread(userId: string, gmailThreadId: string): Promise<GmailThread> {
