@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import Groq from "groq-sdk"
+import { FAST_MODEL } from "@/lib/ai"
 import { decryptEmail } from "@/lib/crypto"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
@@ -32,7 +33,8 @@ export async function POST(req: NextRequest) {
     const snippet = dec.bodyText ? dec.bodyText.slice(0, 500) : dec.snippet || ""
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: FAST_MODEL,
+      reasoning_effort: "low",
       messages: [
         {
           role: "system",
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest) {
         },
       ],
       temperature: 0.7,
-      max_tokens: 256,
+      max_tokens: 800,
     })
 
     const raw = completion.choices[0]?.message?.content?.trim() ?? "[]"

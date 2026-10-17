@@ -2,14 +2,15 @@ import Groq from "groq-sdk"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
 
-const FAST_MODEL = "llama-3.1-8b-instant"
-// llama-3.3-70b-versatile was retired by Groq on 2026-08-16
+// Groq retired llama-3.1-8b-instant and llama-3.3-70b-versatile on 2026-08-16.
+// Both replacements are reasoning models: hidden reasoning counts toward max_tokens.
+export const FAST_MODEL = "openai/gpt-oss-20b"
 export const SMART_MODEL = "openai/gpt-oss-120b"
 
 async function chat(model: string, system: string, user: string): Promise<string> {
   const res = await groq.chat.completions.create({
     model,
-    ...(model === SMART_MODEL && { reasoning_effort: "low" as const }),
+    reasoning_effort: "low",
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },

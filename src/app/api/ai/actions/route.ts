@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import Groq from "groq-sdk"
+import { FAST_MODEL } from "@/lib/ai"
 import { decryptEmail } from "@/lib/crypto"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
@@ -65,7 +66,8 @@ export async function POST(req: NextRequest) {
       .join("\n\n---\n\n")
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: FAST_MODEL,
+      reasoning_effort: "low",
       messages: [
         {
           role: "system",

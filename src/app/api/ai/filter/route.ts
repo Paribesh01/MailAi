@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import Groq from "groq-sdk"
+import { FAST_MODEL } from "@/lib/ai"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
 
@@ -33,10 +34,11 @@ If none match, reply with: []`
 
     try {
       const completion = await groq.chat.completions.create({
-        model: "llama-3.1-8b-instant",
+        model: FAST_MODEL,
+        reasoning_effort: "low",
         messages: [{ role: "user", content: prompt }],
         temperature: 0,
-        max_tokens: 200,
+        max_tokens: 1000,
       })
       const text = completion.choices[0]?.message?.content?.trim() ?? "[]"
       const match = text.match(/\[[\d\s,]*\]/)
