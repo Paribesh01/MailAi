@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { createHmac } from "crypto"
+import { createHmac, timingSafeEqual } from "crypto"
 
 function verifyState(state: string): string | null {
   try {
@@ -13,7 +13,7 @@ function verifyState(state: string): string | null {
     const expected = createHmac("sha256", process.env.ENCRYPTION_SECRET!)
       .update(`${userId}:${ts}`)
       .digest("hex")
-    if (sig !== expected) return null
+    if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null
     return userId
   } catch {
     return null
@@ -95,7 +95,8 @@ export async function GET(req: NextRequest) {
       name: profile.name ?? null,
       image: profile.picture ?? null,
       accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token ?? null,
+      // Google only returns a refresh token on first consent; keep the stored one otherwise
+      ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
       expiresAt: tokens.expires_in
         ? new Date(Date.now() + tokens.expires_in * 1000)
         : null,

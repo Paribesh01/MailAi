@@ -1,14 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { formatDistanceToNow } from "date-fns"
-import { Loader2, Trash2, RefreshCw, RotateCcw, ShieldOff } from "lucide-react"
+import { format } from "date-fns"
+import { Loader2, Trash2, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { formatListDate } from "@/lib/format-date"
 
 interface GmailThread {
   id: string
-  snippet?: string
+  subject: string
+  snippet: string
+  from: string
+  lastMessageAt: string
+  messageCount: number
 }
 
 interface Props {
@@ -28,22 +33,28 @@ export function GmailFolderView({ title, description, icon, apiRoute, primaryAct
   function load() {
     setLoading(true)
     fetch(apiRoute)
-      .then((r) => r.json())
-      .then((d) => setThreads(d.threads ?? []))
+      .then(async (r) => {
+        const d = await r.json()
+        if (!r.ok) throw new Error(d.error)
+        setThreads(d.threads ?? [])
+      })
       .catch(() => toast.error("Failed to load"))
       .finally(() => setLoading(false))
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [])
 
   async function runAction(threadId: string, action: string) {
+    if (action === "delete" && !confirm("Delete this conversation forever? This can't be undone.")) return
     setWorking((p) => new Set([...p, threadId + action]))
     try {
-      await fetch(apiRoute, {
+      const res = await fetch(apiRoute, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadId, action }),
       })
+      if (!res.ok) throw new Error()
       setThreads((p) => p.filter((t) => t.id !== threadId))
       toast.success(action === "delete" ? "Permanently deleted" : action === "restore" ? "Restored to inbox" : "Moved to inbox")
     } catch {
@@ -120,17 +131,31 @@ function ThreadRow({ thread, primaryAction, working, onAction }: {
   const isPrimaryWorking = working.has(thread.id + primaryAction.action)
   const isDeleteWorking = working.has(thread.id + "delete")
 
+  const name = thread.from || "Unknown sender"
+
   return (
     <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white border border-taupe shadow-[0_1px_4px_rgba(45,42,38,0.06)] hover:border-stone-warm/40 transition-colors">
       {/* Avatar */}
       <div className="w-8 h-8 rounded-full bg-taupe flex items-center justify-center shrink-0">
-        <span className="text-xs font-bold text-stone-warm">?</span>
+        <span className="text-xs font-bold text-stone-warm">{name.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 1).toUpperCase() || "?"}</span>
       </div>
 
-      {/* Snippet */}
-      <p className="flex-1 text-sm text-stone-warm truncate min-w-0">
-        {thread.snippet || "(no preview)"}
-      </p>
+      {/* Sender, subject, snippet */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-espresso truncate">{name}</span>
+          {thread.messageCount > 1 && <span className="text-xs text-stone-warm">({thread.messageCount})</span>}
+          <time
+            dateTime={thread.lastMessageAt}
+            title={format(new Date(thread.lastMessageAt), "PPpp")}
+            className="ml-auto text-xs text-stone-warm shrink-0"
+          >
+            {formatListDate(thread.lastMessageAt)}
+          </time>
+        </div>
+        <p className="text-sm text-espresso/80 truncate">{thread.subject || "(no subject)"}</p>
+        {thread.snippet && <p className="text-xs text-stone-warm truncate">{thread.snippet}</p>}
+      </div>
 
       {/* Actions */}
       <div className="flex items-center gap-1.5 shrink-0">

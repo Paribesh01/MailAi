@@ -20,6 +20,20 @@ async function chat(model: string, system: string, user: string): Promise<string
   return res.choices[0]?.message?.content ?? ""
 }
 
+/** Pull a JSON array of strings out of a model reply, tolerating ```json fences or extra prose. */
+export function parseStringArray(text: string): string[] {
+  const match = text.match(/\[[\s\S]*\]/)
+  if (!match) return []
+  try {
+    const parsed = JSON.parse(match[0])
+    return Array.isArray(parsed)
+      ? parsed.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim())
+      : []
+  } catch {
+    return []
+  }
+}
+
 export type EmailCategory = "NEEDS_ATTENTION" | "CAN_WAIT" | "IGNORE"
 
 export interface CategorizeResult {

@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Sparkles, Bell } from "lucide-react"
 import { toast } from "sonner"
 import { addDays, format } from "date-fns"
+import { cn } from "@/lib/utils"
 
 interface FollowUpModalProps {
   open: boolean
@@ -39,9 +40,8 @@ export function FollowUpModal({ open, onClose, threadId, onScheduled }: FollowUp
         body: JSON.stringify({ threadId }),
       })
       const data = await res.json()
-      setMessage(data.message)
-      setDate(format(new Date(data.scheduledFor), "yyyy-MM-dd"))
-      toast.success("AI suggested a follow-up")
+      if (!res.ok) throw new Error(data.error)
+      toast.success(`Follow-up set for ${format(new Date(data.scheduledFor), "EEE, MMM d")}`)
       onScheduled()
       onClose()
     } catch {
@@ -54,12 +54,14 @@ export function FollowUpModal({ open, onClose, threadId, onScheduled }: FollowUp
   async function handleManualSchedule() {
     setLoading(true)
     try {
-      await fetch("/api/ai/follow-up", {
+      const res = await fetch("/api/ai/follow-up", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadId, manualDate: date, manualMessage: message }),
       })
-      toast.success("Follow-up scheduled")
+      if (!res.ok) throw new Error()
+      toast.success(`Follow-up set for ${format(new Date(`${date}T09:00:00`), "EEE, MMM d")}`)
+      setMessage("")
       onScheduled()
       onClose()
     } catch {
@@ -98,17 +100,21 @@ export function FollowUpModal({ open, onClose, threadId, onScheduled }: FollowUp
 
           {/* Quick picks */}
           <div className="flex gap-2">
-            {QUICK_OPTIONS.map(({ label, days }) => (
-              <Button
-                key={label}
-                variant="outline"
-                size="sm"
-                className="flex-1 text-xs"
-                onClick={() => setDate(format(addDays(new Date(), days), "yyyy-MM-dd"))}
-              >
-                {label}
-              </Button>
-            ))}
+            {QUICK_OPTIONS.map(({ label, days }) => {
+              const value = format(addDays(new Date(), days), "yyyy-MM-dd")
+              return (
+                <Button
+                  key={label}
+                  variant="outline"
+                  size="sm"
+                  aria-pressed={date === value}
+                  className={cn("flex-1 text-xs", date === value && "border-sand bg-sand-light/60 text-espresso")}
+                  onClick={() => setDate(value)}
+                >
+                  {label}
+                </Button>
+              )
+            })}
           </div>
 
           {/* Date */}
@@ -136,7 +142,7 @@ export function FollowUpModal({ open, onClose, threadId, onScheduled }: FollowUp
 
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-            <Button size="sm" onClick={handleManualSchedule} disabled={loading}>
+            <Button size="sm" onClick={handleManualSchedule} disabled={loading || !date}>
               {loading ? "Scheduling..." : "Schedule"}
             </Button>
           </div>

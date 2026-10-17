@@ -10,8 +10,19 @@ interface UseKeyboardShortcutsOptions {
   onStar: (id: string) => void
   onCompose: () => void
   onSearch: () => void
+  onHelp?: () => void
   enabled?: boolean
 }
+
+export const KEYBOARD_SHORTCUTS: Array<[string, string]> = [
+  ["j / k", "Next / previous email"],
+  ["e", "Archive"],
+  ["s", "Star / unstar"],
+  ["c", "Compose"],
+  ["/", "Search"],
+  ["Esc", "Close email"],
+  ["?", "Show shortcuts"],
+]
 
 export function useKeyboardShortcuts({
   threads,
@@ -21,6 +32,7 @@ export function useKeyboardShortcuts({
   onStar,
   onCompose,
   onSearch,
+  onHelp,
   enabled = true,
 }: UseKeyboardShortcutsOptions): void {
   useEffect(() => {
@@ -29,11 +41,16 @@ export function useKeyboardShortcuts({
     function handleKeyDown(event: KeyboardEvent): void {
       const target = event.target as HTMLElement
 
-      // Guard: skip if focus is in an input, textarea, or contentEditable element
+      // Leave browser/OS shortcuts alone (⌘C must copy, not open compose)
+      if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return
+
+      // Guard: skip if focus is in a form field, editable element, or an open dialog/menu
       if (
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
-        target.isContentEditable
+        target.tagName === "SELECT" ||
+        target.isContentEditable ||
+        target.closest('[role="dialog"], [role="menu"], [role="listbox"]')
       ) {
         return
       }
@@ -103,23 +120,12 @@ export function useKeyboardShortcuts({
 
         case "Escape": {
           // Deselect thread
-          onSelectThread(null)
+          if (selectedThread !== null) onSelectThread(null)
           break
         }
 
         case "?": {
-          // Show shortcuts help (shift+/)
-          console.log(
-            "Keyboard shortcuts:\n" +
-              "  j         — Select next thread\n" +
-              "  k         — Select previous thread\n" +
-              "  e         — Archive selected thread\n" +
-              "  s         — Star/unstar selected thread\n" +
-              "  c / n     — Compose new email\n" +
-              "  /         — Focus search\n" +
-              "  Escape    — Deselect thread\n" +
-              "  ?         — Show this help"
-          )
+          onHelp?.()
           break
         }
 
@@ -132,5 +138,5 @@ export function useKeyboardShortcuts({
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [enabled, threads, selectedThread, onSelectThread, onArchive, onStar, onCompose, onSearch])
+  }, [enabled, threads, selectedThread, onSelectThread, onArchive, onStar, onCompose, onSearch, onHelp])
 }

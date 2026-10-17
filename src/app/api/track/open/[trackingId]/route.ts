@@ -12,19 +12,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tra
   try {
     await prisma.emailTrack.update({
       where: { trackingId },
-      data: {
-        openCount: { increment: 1 },
-        openedAt: undefined, // only set first time below
-      },
+      data: { openCount: { increment: 1 } },
     })
     // Set openedAt only on first open
-    const track = await prisma.emailTrack.findUnique({ where: { trackingId } })
-    if (track && !track.openedAt) {
-      await prisma.emailTrack.update({
-        where: { trackingId },
-        data: { openedAt: new Date() },
-      })
-    }
+    await prisma.emailTrack.updateMany({
+      where: { trackingId, openedAt: null },
+      data: { openedAt: new Date() },
+    })
   } catch {
     // silently ignore — don't break email rendering
   }

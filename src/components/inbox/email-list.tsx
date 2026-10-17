@@ -2,11 +2,11 @@
 
 import { Thread } from "@/types/email"
 import { cn } from "@/lib/utils"
-import { formatDistanceToNow } from "date-fns"
-import { Star, Bell, RefreshCw } from "lucide-react"
+import { formatListDate } from "@/lib/format-date"
+import { format } from "date-fns"
+import { Star, Bell, RefreshCw, Archive } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { toast } from "sonner"
 
 interface EmailListProps {
   threads: Thread[]
@@ -14,11 +14,26 @@ interface EmailListProps {
   syncing: boolean
   selectedId: string | null
   onSelect: (id: string) => void
-  onUpdate: (id: string, updates: Partial<Thread>) => void
+  onStar: (id: string) => void
+  onArchive: (id: string) => void
   hasMore: boolean
+  loadingMore?: boolean
   onLoadMore: () => void
+  emptyMessage?: string
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
+}
+
+// Literal class names so Tailwind can see them
+const CATEGORY_ACCENT: Record<string, string> = {
+  NEEDS_ATTENTION: "border-l-coral",
+  CAN_WAIT: "border-l-sage",
+  IGNORE: "border-l-tan",
+}
+const CATEGORY_HOVER_ACCENT: Record<string, string> = {
+  NEEDS_ATTENTION: "hover:border-l-coral",
+  CAN_WAIT: "hover:border-l-sage",
+  IGNORE: "hover:border-l-tan",
 }
 
 export function EmailList({
@@ -27,44 +42,15 @@ export function EmailList({
   syncing,
   selectedId,
   onSelect,
-  onUpdate,
+  onStar,
+  onArchive,
   hasMore,
+  loadingMore = false,
   onLoadMore,
-  selectedIds = new Set(),
+  emptyMessage,
+  selectedIds,
   onToggleSelect,
 }: EmailListProps) {
-  async function toggleStar(e: React.MouseEvent, thread: Thread) {
-    e.stopPropagation()
-    const next = !thread.isStarred
-    onUpdate(thread.id, { isStarred: next })
-    try {
-      await fetch(`/api/threads/${thread.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isStarred: next }),
-      })
-    } catch {
-      onUpdate(thread.id, { isStarred: !next })
-      toast.error("Failed to update")
-    }
-  }
-
-  async function archiveThread(e: React.MouseEvent, thread: Thread) {
-    e.stopPropagation()
-    onUpdate(thread.id, { isArchived: true })
-    try {
-      await fetch(`/api/threads/${thread.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isArchived: true }),
-      })
-      toast.success("Archived")
-    } catch {
-      onUpdate(thread.id, { isArchived: false })
-      toast.error("Failed to archive")
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
@@ -98,33 +84,34 @@ export function EmailList({
           <rect width="20" height="16" x="2" y="4" rx="2" />
           <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
         </svg>
-        <p className="text-sm text-espresso">No emails here</p>
+        <p className="text-sm text-espresso">{emptyMessage ?? "No emails here"}</p>
         <p className="text-xs">Hit the refresh button to sync your inbox</p>
       </div>
     )
   }
 
-  const anySelected = selectedIds.size > 0
+  const anySelected = (selectedIds?.size ?? 0) > 0
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
+    <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2" role="list">
       {threads.map((thread) => (
         <ThreadRow
           key={thread.id}
           thread={thread}
           selected={selectedId === thread.id}
           onSelect={() => onSelect(thread.id)}
-          onStar={(e) => toggleStar(e, thread)}
-          onArchive={(e) => archiveThread(e, thread)}
-          isChecked={selectedIds.has(thread.id)}
+          onStar={() => onStar(thread.id)}
+          onArchive={() => onArchive(thread.id)}
+          isChecked={selectedIds?.has(thread.id) ?? false}
           onToggleSelect={onToggleSelect ? () => onToggleSelect(thread.id) : undefined}
           showCheckbox={anySelected}
         />
       ))}
       {hasMore && (
         <div className="py-4 flex justify-center">
-          <Button variant="ghost" size="sm" onClick={onLoadMore} className="text-stone-warm">
-            Load more
+          <Button variant="ghost" size="sm" onClick={onLoadMore} disabled={loadingMore} className="text-stone-warm">
+            {loadingMore && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+            {loadingMore ? "Loading…" : "Load more"}
           </Button>
         </div>
       )}
@@ -145,68 +132,81 @@ function ThreadRow({
   thread: Thread
   selected: boolean
   onSelect: () => void
-  onStar: (e: React.MouseEvent) => void
-  onArchive: (e: React.MouseEvent) => void
+  onStar: () => void
+  onArchive: () => void
   isChecked?: boolean
   onToggleSelect?: () => void
   showCheckbox?: boolean
 }) {
   const senderName =
     thread.participantNames[0] || thread.participantEmails[0]?.split("@")[0] || "Unknown"
+  const preview = thread.aiSummary || thread.snippet
+  const checkboxVisible = showCheckbox || isChecked
 
-  const timeAgo = formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true })
-    .replace("about ", "")
-    .replace(" ago", "")
-
-  const category = thread.category
-
-  const borderColor =
-    isChecked
-      ? "#6b7db3"
-      : category === "NEEDS_ATTENTION"
-      ? "#e0745a"
-      : category === "CAN_WAIT"
-      ? "#7a9e7e"
-      : "transparent"
-
-  function handleCheckboxClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    onToggleSelect?.()
+  function stop(handler: () => void) {
+    return (e: React.MouseEvent) => {
+      e.stopPropagation()
+      handler()
+    }
   }
 
   return (
     <div
+      role="listitem"
+      tabIndex={0}
+      aria-current={selected || undefined}
       onClick={onSelect}
-      onMouseEnter={(e) => {
-        if (!selected && !isChecked) {
-          (e.currentTarget as HTMLElement).style.borderLeftColor = borderColor
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!selected && !isChecked) {
-          (e.currentTarget as HTMLElement).style.borderLeftColor = "transparent"
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onSelect()
         }
       }}
       className={cn(
-        "group relative bg-white rounded-xl cursor-pointer transition-all duration-150 p-4",
+        "group relative rounded-xl cursor-pointer transition-all duration-150 p-4 border-l-[3px]",
         "shadow-[0_1px_3px_rgba(45,42,38,0.06)] hover:shadow-[0_4px_12px_rgba(45,42,38,0.1)]",
-        category === "IGNORE" && !selected && "opacity-60"
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-blue/40",
+        selected ? "bg-sand-light/40" : isChecked ? "bg-blue-light/40" : "bg-white",
+        isChecked
+          ? "border-l-slate-blue"
+          : selected
+          ? CATEGORY_ACCENT[thread.category]
+          : cn("border-l-transparent", CATEGORY_HOVER_ACCENT[thread.category]),
+        thread.category === "IGNORE" && !selected && !isChecked && "opacity-60 hover:opacity-100"
       )}
-      style={{
-        borderLeft: `3px solid ${selected || isChecked ? borderColor : "transparent"}`,
-      }}
     >
       <div className="flex gap-3">
-        {/* Left column: unread dot + star */}
+        {/* Left column: unread dot / bulk checkbox + star */}
         <div className="w-7 flex flex-col items-center pt-0.5 gap-2 shrink-0">
-          {!thread.isRead ? (
-            <span className="w-1.5 h-1.5 rounded-full bg-coral shrink-0" />
-          ) : (
-            <span className="w-1.5 h-1.5 shrink-0" />
-          )}
+          <div className="h-4 flex items-center justify-center">
+            {onToggleSelect && (
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={onToggleSelect}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Select email from ${senderName}`}
+                className={cn(
+                  "w-3.5 h-3.5 rounded cursor-pointer accent-slate-blue",
+                  checkboxVisible ? "block" : "hidden group-hover:block group-focus-within:block"
+                )}
+              />
+            )}
+            {!thread.isRead && (
+              <span
+                aria-label="Unread"
+                className={cn(
+                  "w-2 h-2 rounded-full bg-coral",
+                  onToggleSelect && (checkboxVisible ? "hidden" : "group-hover:hidden group-focus-within:hidden")
+                )}
+              />
+            )}
+          </div>
           <button
-            onClick={onStar}
-            className="cursor-pointer p-0.5 transition-colors"
+            onClick={stop(onStar)}
+            aria-label={thread.isStarred ? "Unstar" : "Star"}
+            className="cursor-pointer p-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sand/50"
           >
             <Star
               className={cn(
@@ -222,18 +222,25 @@ function ThreadRow({
         {/* Right column: content */}
         <div className="flex-1 min-w-0">
           {/* Row 1: sender + time */}
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center justify-between mb-1 gap-2">
             <span className={cn(
-              "text-[15px] truncate",
-              !thread.isRead ? "font-semibold text-espresso" : "font-medium text-espresso"
+              "text-[15px] truncate text-espresso",
+              !thread.isRead ? "font-semibold" : "font-medium"
             )}>
               {senderName}
               {thread.messageCount > 1 && (
                 <span className="text-xs text-stone-warm font-normal ml-1.5">({thread.messageCount})</span>
               )}
             </span>
-            <span className="text-xs font-medium text-stone-warm ml-2 shrink-0 tracking-wide">
-              {timeAgo}
+            <span className="flex items-center gap-1.5 shrink-0 group-hover:invisible group-focus-within:invisible">
+              {thread.hasFollowUp && <Bell className="w-3.5 h-3.5 text-sand" aria-label="Follow-up scheduled" />}
+              <time
+                dateTime={thread.lastMessageAt}
+                title={format(new Date(thread.lastMessageAt), "PPpp")}
+                className={cn("text-xs tracking-wide", !thread.isRead ? "font-semibold text-espresso" : "font-medium text-stone-warm")}
+              >
+                {formatListDate(thread.lastMessageAt)}
+              </time>
             </span>
           </div>
 
@@ -242,18 +249,20 @@ function ThreadRow({
             "text-sm truncate mb-1",
             !thread.isRead ? "font-semibold text-espresso" : "text-espresso/80"
           )}>
-            {thread.subject}
+            {thread.subject || "(no subject)"}
           </p>
 
-          {/* Row 3: AI summary */}
-          <div className="flex items-start gap-1.5">
-            <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 bg-blue-light text-slate-blue text-[11px] font-medium tracking-wide rounded">
-              AI
-            </span>
-            <p className="text-sm text-stone-warm truncate leading-relaxed">
-              {thread.aiSummary || thread.snippet}
-            </p>
-          </div>
+          {/* Row 3: AI summary, falling back to the plain snippet */}
+          {preview && (
+            <div className="flex items-start gap-1.5">
+              {thread.aiSummary && (
+                <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 bg-blue-light text-slate-blue text-[11px] font-medium tracking-wide rounded">
+                  AI
+                </span>
+              )}
+              <p className="text-sm text-stone-warm truncate leading-relaxed">{preview}</p>
+            </div>
+          )}
 
           {/* Account badge — only shown for linked accounts */}
           {thread.accountEmail && (
@@ -277,40 +286,27 @@ function ThreadRow({
                   {label.name}
                 </span>
               ))}
+              {thread.labels.length > 3 && (
+                <span className="text-[10px] text-stone-warm">+{thread.labels.length - 3}</span>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Hover actions: archive + follow-up */}
-      <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {thread.hasFollowUp && <Bell className="w-3.5 h-3.5 text-sand" />}
-        <button
-          onClick={onArchive}
-          className="w-7 h-7 flex items-center justify-center rounded-lg bg-taupe/60 text-stone-warm text-xs font-medium hover:bg-taupe transition-colors"
-          title="Archive"
-        >
-          E
-        </button>
+      {/* Hover actions */}
+      <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+        {!thread.isArchived && (
+          <button
+            onClick={stop(onArchive)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg bg-taupe/60 text-stone-warm hover:bg-taupe hover:text-espresso transition-colors"
+            title="Archive (E)"
+            aria-label="Archive"
+          >
+            <Archive className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
-
-      {/* Bulk select checkbox */}
-      {onToggleSelect && (
-        <div
-          className={cn(
-            "absolute top-3 left-3 z-10 transition-opacity",
-            showCheckbox || isChecked ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-          )}
-          onClick={handleCheckboxClick}
-        >
-          <input
-            type="checkbox"
-            checked={isChecked}
-            onChange={() => {}}
-            className="w-3.5 h-3.5 rounded cursor-pointer accent-slate-blue"
-          />
-        </div>
-      )}
     </div>
   )
 }

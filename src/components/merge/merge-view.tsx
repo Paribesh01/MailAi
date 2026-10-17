@@ -8,22 +8,36 @@ import { cn } from "@/lib/utils"
 interface Recipient { email: string; name?: string; [key: string]: string | undefined }
 interface Result { email: string; status: "sent" | "failed"; error?: string }
 
+const EMAIL_RE = /^[^\s@,<>]+@[^\s@,<>]+\.[^\s@,<>]+$/
+const MAX_MERGE_RECIPIENTS = 100
+
+// One recipient per line: "john@example.com", "John Doe <john@example.com>",
+// "john@example.com, John" or "John, john@example.com"
 function parseRecipients(raw: string): Recipient[] {
-  return raw
-    .split(/\n|,/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      // Support: "John Doe <john@example.com>" or "john@example.com" or "john@example.com, John"
-      const angleMatch = line.match(/^(.+?)\s*<([^>]+)>$/)
-      if (angleMatch) return { name: angleMatch[1].trim(), email: angleMatch[2].trim() }
-      const parts = line.split(/\s+/)
-      if (parts.length >= 2 && parts[parts.length - 1].includes("@")) {
-        return { name: parts.slice(0, -1).join(" "), email: parts[parts.length - 1] }
+  const seen = new Set<string>()
+  const out: Recipient[] = []
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line) continue
+    let r: Recipient | null = null
+    const angle = line.match(/^(.+?)\s*<([^>]+)>$/)
+    if (angle) {
+      r = { name: angle[1].replace(/^"|"$/g, "").trim(), email: angle[2].trim() }
+    } else {
+      const parts = line.split(/[,;\t]/).map((p) => p.trim()).filter(Boolean)
+      const email = parts.find((p) => EMAIL_RE.test(p)) ?? (EMAIL_RE.test(line) ? line : undefined)
+      if (email) {
+        const name = parts.filter((p) => p !== email).join(" ").trim()
+        r = name ? { email, name } : { email }
       }
-      return { email: line }
-    })
-    .filter((r) => r.email.includes("@"))
+    }
+    if (!r || !EMAIL_RE.test(r.email)) continue
+    const key = r.email.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(r)
+  }
+  return out
 }
 
 function interpolate(template: string, vars: Record<string, string | undefined>): string {
@@ -55,6 +69,10 @@ export function MergeView() {
       toast.error("Fill in subject, body, and at least one recipient")
       return
     }
+    if (recipients.length > MAX_MERGE_RECIPIENTS) {
+      toast.error(`Send to at most ${MAX_MERGE_RECIPIENTS} recipients at a time`)
+      return
+    }
     if (!confirm(`Send to ${recipients.length} recipient${recipients.length > 1 ? "s" : ""}?`)) return
     setSending(true)
     setResults(null)
@@ -65,9 +83,11 @@ export function MergeView() {
         body: JSON.stringify({ subject, body, recipients, enableTracking }),
       })
       const d = await res.json()
+      if (!res.ok) throw new Error(d.error)
       setResults(d.results)
       const sentCount = d.results.filter((r: Result) => r.status === "sent").length
-      toast.success(`Sent to ${sentCount}/${recipients.length} recipients`)
+      if (sentCount === recipients.length) toast.success(`Sent to all ${sentCount} recipients`)
+      else toast.warning(`Sent to ${sentCount}/${recipients.length} recipients`)
     } catch {
       toast.error("Mail merge failed")
     } finally {
@@ -125,7 +145,9 @@ export function MergeView() {
             <textarea value={recipientRaw} onChange={(e) => setRecipientRaw(e.target.value)} rows={5}
               placeholder={"john@example.com\nJane Doe <jane@example.com>\nbob@example.com"}
               className="w-full px-3.5 py-3 rounded-xl border border-taupe bg-white text-sm text-espresso placeholder:text-stone-warm/40 focus:outline-none focus:ring-1 focus:ring-slate-blue/30 resize-y font-mono" />
-            <p className="text-[11px] text-stone-warm">One per line. Formats: <code>email@domain.com</code> or <code>Name &lt;email@domain.com&gt;</code></p>
+            <p className="text-[11px] text-stone-warm">
+              One per line, up to {MAX_MERGE_RECIPIENTS}. Formats: <code>email@domain.com</code>, <code>Name &lt;email@domain.com&gt;</code> or <code>email@domain.com, Name</code>. Duplicates are skipped.
+            </p>
           </div>
 
           {/* Options */}

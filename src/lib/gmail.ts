@@ -1,7 +1,7 @@
 import { google } from "googleapis"
 import { prisma } from "@/lib/prisma"
 
-async function getGmailClient(userId: string) {
+export async function getGmailClient(userId: string) {
   const account = await prisma.account.findFirst({
     where: { userId, providerId: "google" },
   })
@@ -68,6 +68,18 @@ export async function getLinkedGmailClient(linkedAccountId: string) {
   return google.gmail({ version: "v1", auth: oauth2Client })
 }
 
+/** Client for the mailbox a thread belongs to (accountEmail null = primary account). */
+export async function getGmailClientForAccount(userId: string, accountEmail?: string | null) {
+  if (accountEmail) {
+    const linked = await prisma.linkedAccount.findFirst({
+      where: { userId, email: accountEmail },
+      select: { id: true },
+    })
+    if (linked) return getLinkedGmailClient(linked.id)
+  }
+  return getGmailClient(userId)
+}
+
 export interface GmailThread {
   gmailThreadId: string
   subject: string
@@ -93,6 +105,7 @@ export interface GmailMessage {
   snippet: string
   internalDate: Date
   isRead: boolean
+  isSent: boolean
   headers: Record<string, string>
   attachments: Attachment[]
 }
@@ -104,6 +117,19 @@ export interface Attachment {
   attachmentId: string
 }
 
+// Gmail returns snippets HTML-escaped ("don&#39;t")
+export function decodeEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+}
+
 function decodeBase64(data: string) {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8")
 }
@@ -112,12 +138,36 @@ function extractHeader(headers: Array<{ name?: string | null; value?: string | n
   return headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? ""
 }
 
+// Split on commas that are outside quotes and angle brackets ("Doe, John" <j@x.com>)
+function splitAddresses(raw: string): string[] {
+  const parts: string[] = []
+  let current = ""
+  let inQuotes = false
+  let inAngle = false
+  for (const ch of raw) {
+    if (ch === '"') inQuotes = !inQuotes
+    else if (ch === "<" && !inQuotes) inAngle = true
+    else if (ch === ">" && !inQuotes) inAngle = false
+    if (ch === "," && !inQuotes && !inAngle) {
+      parts.push(current)
+      current = ""
+    } else {
+      current += ch
+    }
+  }
+  parts.push(current)
+  return parts.map((p) => p.trim()).filter(Boolean)
+}
+
 function parseAddressList(raw: string): { email: string; name: string }[] {
   if (!raw) return []
-  return raw.split(",").map((addr) => {
-    const match = addr.trim().match(/^"?([^"<]+)"?\s*<?([^>]+)?>?$/)
-    if (match) return { name: match[1].trim(), email: match[2]?.trim() ?? match[1].trim() }
-    return { name: addr.trim(), email: addr.trim() }
+  return splitAddresses(raw).map((addr) => {
+    const angle = addr.match(/^(.*?)\s*<([^>]+)>$/)
+    if (angle) {
+      const name = angle[1].trim().replace(/^"(.*)"$/, "$1")
+      return { name, email: angle[2].trim().toLowerCase() }
+    }
+    return { name: "", email: addr.replace(/^"(.*)"$/, "$1").toLowerCase() }
   })
 }
 
@@ -128,9 +178,9 @@ function extractBody(payload: any): { html: string; text: string } {
   function walk(part: any) {
     const mime = part.mimeType ?? ""
     if (mime === "text/html" && part.body?.data) {
-      html = decodeBase64(part.body.data)
+      if (!html) html = decodeBase64(part.body.data)
     } else if (mime === "text/plain" && part.body?.data) {
-      text = decodeBase64(part.body.data)
+      if (!text) text = decodeBase64(part.body.data)
     } else if (part.parts) {
       part.parts.forEach(walk)
     }
@@ -173,16 +223,17 @@ function parseMessage(msg: any): GmailMessage {
   return {
     gmailMessageId: msg.id,
     from: fromParsed.email,
-    fromName: fromParsed.name,
+    fromName: fromParsed.name || fromParsed.email,
     to,
     cc,
     bcc,
     subject: extractHeader(headers, "subject"),
     bodyHtml: html,
     bodyText: text,
-    snippet: msg.snippet ?? "",
+    snippet: decodeEntities(msg.snippet ?? ""),
     internalDate: new Date(Number(msg.internalDate)),
     isRead: !msg.labelIds?.includes("UNREAD"),
+    isSent: !!msg.labelIds?.includes("SENT"),
     headers: headerMap,
     attachments: extractAttachments(msg.payload),
   }
@@ -191,7 +242,7 @@ function parseMessage(msg: any): GmailMessage {
 // threads.get costs 10 quota units each, so cap how many run at once
 const DETAIL_CONCURRENCY = 10
 
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let next = 0
   async function worker() {
@@ -219,7 +270,8 @@ async function fetchThreadsWithClient(
   maxResults: number,
   pageToken?: string,
   q = "in:inbox",
-  knownHistoryIds?: Map<string, string | null>
+  knownHistoryIds?: Map<string, string | null>,
+  detailFormat: "full" | "metadata" = "full"
 ) {
   const res = await gmail.users.threads.list({
     userId: "me",
@@ -236,7 +288,8 @@ async function fetchThreadsWithClient(
     const detail = await gmail.users.threads.get({
       userId: "me",
       id: t.id!,
-      format: "full",
+      format: detailFormat,
+      ...(detailFormat === "metadata" && { metadataHeaders: ["From", "To", "Subject", "Date"] }),
     })
 
     const messages = (detail.data.messages ?? []).map(parseMessage)
@@ -257,7 +310,7 @@ async function fetchThreadsWithClient(
     return {
       gmailThreadId: t.id!,
       subject: first?.subject ?? "(no subject)",
-      snippet: last?.snippet ?? detail.data.snippet ?? "",
+      snippet: last?.snippet ?? decodeEntities(detail.data.snippet ?? ""),
       lastMessageAt: last?.internalDate ?? new Date(),
       participantEmails: uniqueParticipants.map((p) => p.email),
       participantNames: uniqueParticipants.map((p) => p.name),
@@ -289,8 +342,12 @@ export async function fetchThreads(
   return fetchThreadsWithClient(gmail, maxResults, pageToken, "in:inbox", knownHistoryIds)
 }
 
-export async function fetchThread(userId: string, gmailThreadId: string): Promise<GmailThread> {
-  const gmail = await getGmailClient(userId)
+export async function fetchThread(
+  userId: string,
+  gmailThreadId: string,
+  accountEmail?: string | null
+): Promise<GmailThread> {
+  const gmail = await getGmailClientForAccount(userId, accountEmail)
   const detail = await gmail.users.threads.get({
     userId: "me",
     id: gmailThreadId,
@@ -320,32 +377,80 @@ export async function fetchThread(userId: string, gmailThreadId: string): Promis
     participantEmails: uniqueParticipants.map((p) => p.email),
     participantNames: uniqueParticipants.map((p) => p.name),
     messageCount: messages.length,
+    historyId: detail.data.historyId ?? null,
     messages,
+  }
+}
+
+// RFC 2047 encoding so non-ASCII subjects/names (emoji, accents) survive transport
+function encodeHeader(value: string) {
+  return /^[\x20-\x7e]*$/.test(value) ? value : `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`
+}
+
+function toBase64Url(value: string) {
+  return Buffer.from(value, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")
+}
+
+/** Look up the RFC 822 Message-ID / References of a Gmail message, for threading replies. */
+async function getReplyHeaders(gmail: ReturnType<typeof google.gmail>, gmailMessageId: string) {
+  try {
+    const msg = await gmail.users.messages.get({
+      userId: "me",
+      id: gmailMessageId,
+      format: "metadata",
+      metadataHeaders: ["Message-ID", "References"],
+    })
+    const headers = msg.data.payload?.headers ?? []
+    return {
+      messageId: extractHeader(headers, "message-id"),
+      references: extractHeader(headers, "references"),
+    }
+  } catch {
+    return { messageId: "", references: "" }
   }
 }
 
 export async function sendEmail(
   userId: string,
-  opts: { to: string; subject: string; body: string; replyToMessageId?: string; threadId?: string }
+  opts: {
+    to: string | string[]
+    subject: string
+    body: string
+    replyToMessageId?: string
+    threadId?: string
+    accountEmail?: string | null
+  }
 ) {
-  const gmail = await getGmailClient(userId)
+  const gmail = await getGmailClientForAccount(userId, opts.accountEmail)
   const userInfo = await gmail.users.getProfile({ userId: "me" })
   const from = userInfo.data.emailAddress!
+  const to = Array.isArray(opts.to) ? opts.to.join(", ") : opts.to
 
   const headers = [
     `From: ${from}`,
-    `To: ${opts.to}`,
-    `Subject: ${opts.subject}`,
+    `To: ${to}`,
+    `Subject: ${encodeHeader(opts.subject)}`,
     "MIME-Version: 1.0",
     'Content-Type: text/html; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
   ]
-  if (opts.replyToMessageId) headers.push(`In-Reply-To: ${opts.replyToMessageId}`)
 
-  const raw = Buffer.from(headers.join("\r\n") + "\r\n\r\n" + opts.body)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "")
+  // replyToMessageId is Gmail's internal id; recipients' clients thread on the RFC Message-ID
+  if (opts.replyToMessageId) {
+    const { messageId, references } = await getReplyHeaders(gmail, opts.replyToMessageId)
+    if (messageId) {
+      headers.push(`In-Reply-To: ${messageId}`)
+      headers.push(`References: ${[references, messageId].filter(Boolean).join(" ")}`)
+    }
+  }
+
+  // Base64 body keeps long lines and non-ASCII text intact
+  const body = Buffer.from(opts.body, "utf8").toString("base64").replace(/(.{76})/g, "$1\r\n")
+  const raw = toBase64Url(headers.join("\r\n") + "\r\n\r\n" + body)
 
   const res = await gmail.users.messages.send({
     userId: "me",
@@ -355,8 +460,8 @@ export async function sendEmail(
   return res.data
 }
 
-export async function markAsRead(userId: string, messageId: string) {
-  const gmail = await getGmailClient(userId)
+export async function markAsRead(userId: string, messageId: string, accountEmail?: string | null) {
+  const gmail = await getGmailClientForAccount(userId, accountEmail)
   await gmail.users.messages.modify({
     userId: "me",
     id: messageId,
@@ -364,17 +469,26 @@ export async function markAsRead(userId: string, messageId: string) {
   })
 }
 
-export async function archiveThread(userId: string, threadId: string) {
-  const gmail = await getGmailClient(userId)
+export async function setThreadRead(userId: string, threadId: string, read: boolean, accountEmail?: string | null) {
+  const gmail = await getGmailClientForAccount(userId, accountEmail)
   await gmail.users.threads.modify({
     userId: "me",
     id: threadId,
-    requestBody: { removeLabelIds: ["INBOX"] },
+    requestBody: read ? { removeLabelIds: ["UNREAD"] } : { addLabelIds: ["UNREAD"] },
   })
 }
 
-export async function starThread(userId: string, threadId: string, star: boolean) {
-  const gmail = await getGmailClient(userId)
+export async function archiveThread(userId: string, threadId: string, archive: boolean, accountEmail?: string | null) {
+  const gmail = await getGmailClientForAccount(userId, accountEmail)
+  await gmail.users.threads.modify({
+    userId: "me",
+    id: threadId,
+    requestBody: archive ? { removeLabelIds: ["INBOX"] } : { addLabelIds: ["INBOX"] },
+  })
+}
+
+export async function starThread(userId: string, threadId: string, star: boolean, accountEmail?: string | null) {
+  const gmail = await getGmailClientForAccount(userId, accountEmail)
   await gmail.users.threads.modify({
     userId: "me",
     id: threadId,
@@ -384,8 +498,8 @@ export async function starThread(userId: string, threadId: string, star: boolean
   })
 }
 
-export async function deleteThread(userId: string, threadId: string) {
-  const gmail = await getGmailClient(userId)
+export async function deleteThread(userId: string, threadId: string, accountEmail?: string | null) {
+  const gmail = await getGmailClientForAccount(userId, accountEmail)
   await gmail.users.threads.trash({ userId: "me", id: threadId })
 }
 
@@ -397,12 +511,12 @@ export async function searchEmails(userId: string, query: string, maxResults = 2
 
 export async function fetchTrashedThreads(userId: string, maxResults = 50) {
   const gmail = await getGmailClient(userId)
-  return fetchThreadsWithClient(gmail, maxResults, undefined, "in:trash")
+  return fetchThreadsWithClient(gmail, maxResults, undefined, "in:trash", undefined, "metadata")
 }
 
 export async function fetchSpamThreads(userId: string, maxResults = 50) {
   const gmail = await getGmailClient(userId)
-  return fetchThreadsWithClient(gmail, maxResults, undefined, "in:spam")
+  return fetchThreadsWithClient(gmail, maxResults, undefined, "in:spam", undefined, "metadata")
 }
 
 export async function restoreThread(userId: string, threadId: string) {

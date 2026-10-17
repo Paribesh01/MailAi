@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useEffectEvent, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Thread, EmailCategory } from "@/types/email"
 import { SplitTabs, CustomFilter, FilterConditions } from "./split-tabs"
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
+import { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from "@/hooks/use-keyboard-shortcuts"
+import { patchThread } from "@/lib/thread-api"
 import { ChatAssistant } from "./chat-assistant"
 
 interface InboxViewProps {
@@ -41,6 +42,8 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   const [composeOpen, setComposeOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [counts, setCounts] = useState<Record<string, number>>({})
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [aiFilteredIds, setAiFilteredIds] = useState<Set<string> | null>(null)
   const [aiFiltering, setAiFiltering] = useState(false)
@@ -63,25 +66,28 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   }, [])
 
   const fetchThreads = useCallback(async (p = 1): Promise<number> => {
-    setLoading(p === 1)
+    if (p === 1) setLoading(true)
+    else setLoadingMore(true)
     try {
       const params = new URLSearchParams()
       const isCustom = !!activeCustomFilter
       if (!isStarred && !isSnoozed && !isArchived && !isFollowups && !isCustom && activeCategory !== "ALL") {
         params.set("category", activeCategory)
       }
-      if (isCustom) params.set("limit", "200")
       if (isStarred) params.set("starred", "true")
       if (isSnoozed) params.set("snoozed", "true")
       if (isArchived) params.set("archived", "true")
+      if (isFollowups) params.set("followups", "true")
       params.set("page", String(p))
-      params.set("limit", "30")
+      // Custom filters match client-side, so pull a bigger page to filter from
+      params.set("limit", isCustom ? "100" : "30")
 
       const res = await fetch(`/api/emails?${params}`)
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
 
-      let result = data.threads as Thread[]
-      if (isFollowups) result = result.filter((t) => t.hasFollowUp)
+      const result = (data.threads ?? []) as Thread[]
+      if (data.counts) setCounts(data.counts)
 
       if (p === 1) setThreads(result)
       else setThreads((prev) => [...prev, ...result])
@@ -92,6 +98,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
       return 0
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
   }, [activeCategory, activeCustomFilter, isStarred, isSnoozed, isArchived, isFollowups])
 
@@ -162,31 +169,51 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
     return () => clearInterval(id)
   }, [syncing])
 
-  async function handleSearch(q: string) {
+  // Each search hits the Gmail API, so wait until typing pauses and ignore stale responses
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestSearch = useRef("")
+  function handleSearch(q: string) {
     setSearchQuery(q)
+    latestSearch.current = q
+    if (searchTimer.current) clearTimeout(searchTimer.current)
     if (!q.trim()) { setSearchResults(null); return }
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
-      const data = await res.json()
-      setSearchResults(data.threads)
-    } catch {
-      toast.error("Search failed")
-    }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+        const data = await res.json()
+        if (latestSearch.current !== q) return
+        if (!res.ok) throw new Error(data.error)
+        setSearchResults(data.threads ?? [])
+      } catch {
+        if (latestSearch.current === q) toast.error("Search failed")
+      }
+    }, 350)
   }
+  useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current) }, [])
 
-  function updateThread(id: string, updates: Partial<Thread>) {
-    setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)))
-  }
+  const updateThread = useCallback((id: string, updates: Partial<Thread>) => {
+    const apply = (list: Thread[]) => list.map((t) => (t.id === id ? { ...t, ...updates } : t))
+    setThreads(apply)
+    setSearchResults((prev) => (prev ? apply(prev) : prev))
+  }, [])
 
   async function handleArchiveThread(id: string) {
+    if (selectedThread === id) setSelectedThread(null)
     updateThread(id, { isArchived: true })
     try {
-      await fetch(`/api/threads/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isArchived: true }),
+      await patchThread(id, { isArchived: true })
+      toast.success("Archived", {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            updateThread(id, { isArchived: false })
+            patchThread(id, { isArchived: false }).catch(() => {
+              updateThread(id, { isArchived: true })
+              toast.error("Couldn't undo")
+            })
+          },
+        },
       })
-      toast.success("Archived")
     } catch {
       updateThread(id, { isArchived: false })
       toast.error("Failed to archive")
@@ -194,16 +221,12 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   }
 
   async function handleStarThread(id: string) {
-    const thread = threads.find((t) => t.id === id)
+    const thread = (searchResults ?? threads).find((t) => t.id === id)
     if (!thread) return
     const next = !thread.isStarred
     updateThread(id, { isStarred: next })
     try {
-      await fetch(`/api/threads/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isStarred: next }),
-      })
+      await patchThread(id, { isStarred: next })
     } catch {
       updateThread(id, { isStarred: !next })
       toast.error("Failed to update")
@@ -219,10 +242,10 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
     })
   }
 
-  // When active filter has an aiPrompt, call AI to classify threads
-  useEffect(() => {
-    const prompt = activeCustomFilter?.conditions?.aiPrompt
-    if (!prompt || !threads.length) { setAiFilteredIds(null); return }
+  // When active filter has an aiPrompt, call AI to classify threads.
+  // Keyed on the thread ids so starring/reading a thread doesn't re-run the classification.
+  const classifyThreads = useEffectEvent((prompt: string | undefined, isCancelled: () => boolean) => {
+    if (!prompt || !threads.length) { setAiFilteredIds(null); setAiFiltering(false); return }
     setAiFiltering(true)
     const payload = threads.map((t) => ({
       id: t.id, subject: t.subject, snippet: t.snippet,
@@ -234,16 +257,28 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
       body: JSON.stringify({ threads: payload, aiPrompt: prompt }),
     })
       .then((r) => r.json())
-      .then((d) => setAiFilteredIds(new Set(d.matchingIds ?? [])))
-      .catch(() => setAiFilteredIds(null))
-      .finally(() => setAiFiltering(false))
-  }, [activeCustomFilter, threads])
+      .then((d) => { if (!isCancelled()) setAiFilteredIds(new Set(d.matchingIds ?? [])) })
+      .catch(() => { if (!isCancelled()) setAiFilteredIds(null) })
+      .finally(() => { if (!isCancelled()) setAiFiltering(false) })
+  })
+  const threadIdsKey = threads.map((t) => t.id).join(",")
+  useEffect(() => {
+    let cancelled = false
+    classifyThreads(activeCustomFilter?.conditions?.aiPrompt, () => cancelled)
+    return () => { cancelled = true }
+  }, [activeCustomFilter, threadIdsKey])
 
-  const displayThreads = searchResults ?? (
+  // Hide threads that no longer belong in this view (archived/snoozed/unstarred) without a refetch
+  const belongsInView = (t: Thread) =>
+    (isArchived ? t.isArchived : !t.isArchived) &&
+    (isSnoozed ? t.isSnoozed : !t.isSnoozed) &&
+    (!isStarred || t.isStarred)
+
+  const displayThreads = (searchResults ?? (
     activeCustomFilter?.conditions?.aiPrompt
       ? (aiFilteredIds ? threads.filter((t) => aiFilteredIds.has(t.id)) : threads)
       : applyCustomFilter(threads, activeCustomFilter)
-  )
+  )).filter(belongsInView)
 
   useKeyboardShortcuts({
     threads: displayThreads,
@@ -256,12 +291,15 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
       const input = document.querySelector<HTMLInputElement>("input[placeholder='Search emails...']")
       input?.focus()
     },
+    onHelp: () =>
+      toast("Keyboard shortcuts", {
+        description: KEYBOARD_SHORTCUTS.map(([key, label]) => `${key} — ${label}`).join("\n"),
+        classNames: { description: "whitespace-pre-line" },
+        duration: 8000,
+      }),
+    enabled: !composeOpen,
   })
 
-  const counts = threads.reduce(
-    (acc, t) => { acc[t.category] = (acc[t.category] ?? 0) + 1; return acc },
-    {} as Record<string, number>
-  )
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -333,8 +371,18 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
           syncing={syncing}
           selectedId={selectedThread}
           onSelect={setSelectedThread}
-          onUpdate={updateThread}
-          hasMore={hasMore}
+          onStar={handleStarThread}
+          onArchive={handleArchiveThread}
+          hasMore={hasMore && !searchResults}
+          loadingMore={loadingMore}
+          emptyMessage={
+            searchQuery ? `No results for "${searchQuery}"`
+            : isStarred ? "No starred emails"
+            : isSnoozed ? "Nothing snoozed"
+            : isArchived ? "No archived emails"
+            : isFollowups ? "No follow-ups scheduled"
+            : undefined
+          }
           onLoadMore={() => { const next = page + 1; setPage(next); fetchThreads(next) }}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
@@ -345,6 +393,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
       {selectedThread && (
         <div className="flex-1 min-w-0 overflow-hidden">
           <ThreadPanel
+            key={selectedThread}
             threadId={selectedThread}
             onClose={() => setSelectedThread(null)}
             onUpdate={updateThread}

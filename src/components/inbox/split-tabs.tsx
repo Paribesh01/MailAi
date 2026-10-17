@@ -86,6 +86,7 @@ export function SplitTabs({ active, onChange, counts, linkedAccountEmails = [] }
           conditions: { aiPrompt: form.aiPrompt.trim() },
         }),
       })
+      if (!res.ok) throw new Error()
       const created: CustomFilter = await res.json()
       setCustomFilters((prev) => [...prev, created])
       setShowPopover(false)
@@ -102,11 +103,12 @@ export function SplitTabs({ active, onChange, counts, linkedAccountEmails = [] }
     e.stopPropagation()
     setRemoving(id)
     try {
-      await fetch("/api/custom-filters", {
+      const res = await fetch("/api/custom-filters", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       })
+      if (!res.ok) throw new Error()
       setCustomFilters((prev) => prev.filter((f) => f.id !== id))
       if (active === id) onChange("ALL")
     } catch {

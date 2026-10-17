@@ -35,7 +35,7 @@ export function UnsubscribeView() {
         window.open(sender.unsubscribeUrl, "_blank", "noopener,noreferrer")
       }
 
-      await fetch("/api/unsubscribe", {
+      const res = await fetch("/api/unsubscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -43,6 +43,7 @@ export function UnsubscribeView() {
           unsubscribeMailto: sender.unsubscribeMailto,
         }),
       })
+      if (!res.ok) throw new Error()
 
       setUnsubscribed((prev) => new Set([...prev, sender.email]))
       toast.success(`Unsubscribed from ${sender.name}`)

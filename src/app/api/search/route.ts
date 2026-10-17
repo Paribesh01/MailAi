@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { searchEmails } from "@/lib/gmail"
+import { decryptThread } from "@/lib/crypto"
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
       orderBy: { lastMessageAt: "desc" },
     })
 
-    return NextResponse.json({ threads })
+    return NextResponse.json({ threads: threads.map((t) => decryptThread(t, session.user.id)) })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

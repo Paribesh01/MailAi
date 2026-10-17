@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
+import { decryptThread } from "@/lib/crypto"
 
 export async function GET() {
   try {
@@ -10,7 +11,9 @@ export async function GET() {
       include: { thread: true },
       orderBy: { scheduledFor: "asc" },
     })
-    return NextResponse.json({ followUps })
+    return NextResponse.json({
+      followUps: followUps.map((f) => ({ ...f, thread: decryptThread(f.thread, session.user.id) })),
+    })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

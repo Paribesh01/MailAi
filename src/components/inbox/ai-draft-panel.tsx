@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import { Sparkles, Send, X, RefreshCw, Wand2, ChevronDown, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { SmartReplyChips } from "@/components/inbox/smart-reply-chips"
+import { textToEmailHtml } from "@/lib/email-html"
 
 type Tone = "Friendly" | "Formal" | "Brief" | "Assertive"
 
@@ -31,9 +31,14 @@ interface AiDraftPanelProps {
 
 export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, prefillDraft = "" }: AiDraftPanelProps) {
   const lastEmail = thread.emails[thread.emails.length - 1]
-  const replyTo = lastEmail?.from ?? ""
+  // Reply to the most recent message someone else sent (skip our own, incl. the linked mailbox)
+  const ownAddresses = [userEmail, thread.accountEmail].filter(Boolean).map((e) => e!.toLowerCase())
+  const isMine = (e: { from: string; isSent: boolean }) => e.isSent || ownAddresses.includes(e.from.toLowerCase())
+  const lastFromOther = [...thread.emails].reverse().find((e) => !isMine(e))
+  const replyTo = lastFromOther?.from ?? lastEmail?.to[0] ?? ""
 
-  const [to, setTo] = useState(replyTo === userEmail ? thread.emails[0]?.from ?? "" : replyTo)
+  const [to, setTo] = useState(replyTo)
+  const [signature, setSignature] = useState("")
   const [draft, setDraft] = useState(prefillDraft)
   const [instruction, setInstruction] = useState("")
   const [generating, setGenerating] = useState(false)
@@ -46,6 +51,13 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const templateRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => { if (d.emailSignature) setSignature(d.emailSignature) })
+      .catch(() => {})
+  }, [])
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -96,6 +108,7 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
         body: JSON.stringify({ threadId, instruction: buildInstruction() }),
       })
       const data = await res.json()
+      if (!res.ok || !data.draft) throw new Error(data.error)
       setDraft(data.draft)
     } catch {
       toast.error("Failed to generate draft")
@@ -114,6 +127,7 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
         body: JSON.stringify({ draft, instruction: buildInstruction() }),
       })
       const data = await res.json()
+      if (!res.ok || !data.draft) throw new Error(data.error)
       setDraft(data.draft)
       setInstruction("")
     } catch {
@@ -127,33 +141,38 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
     if (!draft.trim() || !to.trim()) return
     setSending(true)
     try {
-      await fetch("/api/emails", {
+      const res = await fetch("/api/emails", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to,
-          subject: thread.subject.startsWith("Re:") ? thread.subject : `Re: ${thread.subject}`,
-          html: `<p>${draft.replace(/\n/g, "<br>")}</p>`,
+          subject: /^re:/i.test(thread.subject) ? thread.subject : `Re: ${thread.subject}`,
+          html: textToEmailHtml(draft, signature),
           replyToMessageId: lastEmail?.gmailMessageId,
           gmailThreadId: thread.gmailThreadId,
         }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error)
+      }
       toast.success("Sent!")
-      onSent ? onSent() : onClose()
-    } catch {
-      toast.error("Failed to send")
+      if (onSent) onSent()
+      else onClose()
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : "Failed to send")
     } finally {
       setSending(false)
     }
   }
 
   return (
-    <div className="border-t border-taupe bg-white shrink-0 shadow-[0_-4px_16px_rgba(45,42,38,0.06)]">
+    <div className="border-t border-taupe bg-white shrink-0 max-h-[60%] overflow-y-auto shadow-[0_-4px_16px_rgba(45,42,38,0.06)]">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-taupe">
         <Sparkles className="w-4 h-4 text-slate-blue" />
-        <span className="text-[15px] font-semibold text-espresso">AI Draft</span>
-        <button onClick={onClose} className="ml-auto w-7 h-7 flex items-center justify-center rounded hover:bg-taupe/40 transition-colors">
+        <span className="text-[15px] font-semibold text-espresso">Reply</span>
+        <button onClick={onClose} aria-label="Close reply" className="ml-auto w-7 h-7 flex items-center justify-center rounded hover:bg-taupe/40 transition-colors">
           <X className="w-[17px] h-[17px] text-stone-warm" />
         </button>
       </div>
@@ -197,7 +216,12 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
             onChange={(e) => setInstruction(e.target.value)}
             className="h-8 text-sm flex-1"
             placeholder="Instructions (e.g. 'be brief', 'ask for a call', 'decline politely')..."
-            onKeyDown={(e) => { if (e.key === "Enter") draft ? improveDraft() : generateDraft() }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return
+              e.preventDefault()
+              if (draft) improveDraft()
+              else generateDraft()
+            }}
           />
 
           {/* Templates picker */}
@@ -240,7 +264,8 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
 
           <button
             onClick={draft ? improveDraft : generateDraft}
-            disabled={generating || improving}
+            disabled={generating || improving || (!!draft && !instruction.trim())}
+            title={draft && !instruction.trim() ? "Type an instruction to improve the draft" : undefined}
             className="h-8 px-3.5 rounded-[10px] bg-espresso text-white text-xs font-semibold flex items-center gap-1.5 shrink-0 hover:bg-espresso/85 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {generating || improving ? (
@@ -253,19 +278,17 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
           </button>
         </div>
 
-        {/* Smart reply chips — shown only when draft is empty */}
-        {!draft && (
-          <SmartReplyChips
-            threadId={threadId}
-            onSelect={(text) => setDraft(text)}
-          />
-        )}
-
         {/* Draft textarea */}
         <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={generating ? "Generating..." : "Your reply will appear here..."}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault()
+              sendEmail()
+            }
+          }}
+          placeholder={generating ? "Generating..." : "Write a reply or generate one with AI… (⌘/Ctrl + Enter to send)"}
           className={cn("min-h-[120px] text-sm resize-y border-taupe focus:border-sand focus:ring-sand/15 text-espresso placeholder:text-tan", generating && "opacity-60")}
           disabled={generating}
         />
@@ -288,7 +311,7 @@ export function AiDraftPanel({ threadId, thread, userEmail, onClose, onSent, pre
           </button>
           <button
             onClick={sendEmail}
-            disabled={!draft.trim() || sending}
+            disabled={!draft.trim() || !to.trim() || sending}
             className="h-9 px-4 rounded-[10px] bg-sage text-white text-xs font-semibold flex items-center gap-2 hover:bg-sage/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-3.5 h-3.5" />

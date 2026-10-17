@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import { format, formatDistanceToNow } from "date-fns"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Send, Eye, EyeOff, CheckCircle2 } from "lucide-react"
+import { Send, Eye, EyeOff, X } from "lucide-react"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 interface SentEmail {
@@ -39,9 +40,10 @@ export function SentView() {
       fetch("/api/sent").then((r) => r.json()),
       fetch("/api/track").then((r) => r.json()),
     ]).then(([sentData, trackData]) => {
+      if (sentData.error) toast.error("Couldn't load sent emails")
       setEmails(sentData.sent ?? [])
       setTracks(trackData.tracks ?? [])
-    }).catch(() => {}).finally(() => setLoading(false))
+    }).catch(() => toast.error("Couldn't load sent emails")).finally(() => setLoading(false))
   }, [])
 
   if (loading) {
@@ -64,7 +66,7 @@ export function SentView() {
   return (
     <div className="flex h-full overflow-hidden bg-cream">
       {/* List */}
-      <div className={cn("flex flex-col border-r border-taupe overflow-y-auto", selected ? "w-96 shrink-0" : "flex-1")}>
+      <div className={cn("flex flex-col border-r border-taupe overflow-y-auto", selected && tab === "sent" ? "w-96 shrink-0" : "flex-1")}>
         {/* Tabs */}
         <div className="flex border-b border-taupe shrink-0">
           <button onClick={() => setTab("sent")} className={cn(
@@ -144,11 +146,20 @@ export function SentView() {
       {/* Detail panel — only for sent tab */}
       {selected && tab === "sent" && (
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-espresso">{selected.subject}</h3>
-            <p className="text-sm text-stone-warm mt-1">
-              To: {selected.to} · {format(new Date(selected.date), "MMM d, yyyy 'at' h:mm a")}
-            </p>
+          <div className="mb-4 flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-semibold text-espresso">{selected.subject}</h3>
+              <p className="text-sm text-stone-warm mt-1">
+                To: {selected.to} · {format(new Date(selected.date), "MMM d, yyyy 'at' h:mm a")}
+              </p>
+            </div>
+            <button
+              onClick={() => setSelected(null)}
+              aria-label="Close"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-stone-warm hover:bg-taupe/50 hover:text-espresso shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
           <div className="rounded-xl border border-taupe p-4 bg-white">
             <pre className="whitespace-pre-wrap font-sans text-sm text-espresso/80 leading-relaxed">

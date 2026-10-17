@@ -59,22 +59,18 @@ export function SmartReplyChips({ threadId, onSelect }: SmartReplyChipsProps) {
   if (replies.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-center gap-2 pt-1">
+      <span className="text-[11px] font-medium text-stone-warm">Quick replies</span>
       {replies.map((text, index) => (
         <Button
           key={index}
           variant="ghost"
           size="sm"
           onClick={() => onSelect(text)}
-          className="h-7 rounded-full px-3 text-xs font-medium text-white
-            bg-gradient-to-r from-indigo-500 to-purple-500
-            hover:from-indigo-600 hover:to-purple-600
-            hover:text-white
-            shadow-sm transition-all duration-150
-            border-0 gap-1"
+          className="h-7 max-w-full rounded-full px-3 text-xs font-medium gap-1 border border-taupe bg-white text-espresso hover:bg-sand-light/50 hover:border-sand hover:text-espresso shadow-[0_1px_2px_rgba(45,42,38,0.06)]"
         >
-          <Zap className="h-3 w-3 shrink-0" />
-          {text}
+          <Zap className="h-3 w-3 shrink-0 text-sand" />
+          <span className="truncate">{text}</span>
         </Button>
       ))}
     </div>

@@ -1,36 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
-import { google } from "googleapis"
-import { prisma } from "@/lib/prisma"
-
-async function getGmailClient(userId: string) {
-  const account = await prisma.account.findFirst({
-    where: { userId, providerId: "google" },
-  })
-  if (!account?.accessToken) throw new Error("No Google account linked")
-
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`
-  )
-  oauth2Client.setCredentials({
-    access_token: account.accessToken,
-    refresh_token: account.refreshToken ?? undefined,
-    expiry_date: account.accessTokenExpiresAt?.getTime(),
-  })
-  oauth2Client.on("tokens", async (tokens) => {
-    await prisma.account.update({
-      where: { id: account.id },
-      data: {
-        accessToken: tokens.access_token ?? account.accessToken,
-        refreshToken: tokens.refresh_token ?? account.refreshToken,
-        accessTokenExpiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
-      },
-    })
-  })
-  return google.gmail({ version: "v1", auth: oauth2Client })
-}
+import { getGmailClient, mapWithConcurrency, decodeEntities } from "@/lib/gmail"
 
 function extractHeader(headers: Array<{ name?: string | null; value?: string | null }>, name: string) {
   return headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? ""
@@ -66,29 +36,27 @@ export async function GET() {
 
     const messages = list.data.messages ?? []
 
-    const sent = await Promise.all(
-      messages.map(async (m) => {
-        const msg = await gmail.users.messages.get({
-          userId: "me",
-          id: m.id!,
-          format: "full",
-        })
-        const headers = msg.data.payload?.headers ?? []
-        const to = extractHeader(headers, "to")
-        const subject = extractHeader(headers, "subject") || "(no subject)"
-        const date = new Date(Number(msg.data.internalDate))
-        const bodyText = extractBody(msg.data.payload)
-        return {
-          id: m.id!,
-          to,
-          subject,
-          snippet: msg.data.snippet ?? "",
-          bodyText,
-          date: date.toISOString(),
-          threadId: msg.data.threadId ?? "",
-        }
+    const sent = await mapWithConcurrency(messages, 10, async (m) => {
+      const msg = await gmail.users.messages.get({
+        userId: "me",
+        id: m.id!,
+        format: "full",
       })
-    )
+      const headers = msg.data.payload?.headers ?? []
+      const to = extractHeader(headers, "to")
+      const subject = extractHeader(headers, "subject") || "(no subject)"
+      const date = new Date(Number(msg.data.internalDate))
+      const bodyText = extractBody(msg.data.payload)
+      return {
+        id: m.id!,
+        to,
+        subject,
+        snippet: decodeEntities(msg.data.snippet ?? ""),
+        bodyText,
+        date: date.toISOString(),
+        threadId: msg.data.threadId ?? "",
+      }
+    })
 
     return NextResponse.json({ sent })
   } catch (err: unknown) {

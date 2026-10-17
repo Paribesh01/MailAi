@@ -27,7 +27,7 @@ interface Template {
 
 interface SenderRule {
   id: string
-  pattern: string
+  senderPattern: string
   action: "NEEDS_ATTENTION" | "CAN_WAIT" | "IGNORE"
 }
 
@@ -132,11 +132,12 @@ export function SettingsView({ user }: SettingsViewProps) {
   async function removeLinkedAccount(id: string) {
     setRemovingLinked((prev) => new Set([...prev, id]))
     try {
-      await fetch("/api/linked-accounts", {
+      const res = await fetch("/api/linked-accounts", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       })
+      if (!res.ok) throw new Error()
       setLinkedAccounts((prev) => prev.filter((a) => a.id !== id))
       toast.success("Account disconnected")
     } catch {
@@ -148,16 +149,18 @@ export function SettingsView({ user }: SettingsViewProps) {
 
   async function save(updates: Partial<Prefs>) {
     setSaving(true)
-    const next = { ...prefs, ...updates }
-    setPrefs(next)
+    const previous = prefs
+    setPrefs({ ...prefs, ...updates })
     try {
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       })
+      if (!res.ok) throw new Error()
       toast.success("Saved")
     } catch {
+      setPrefs(previous)
       toast.error("Failed to save")
     } finally {
       setSaving(false)
@@ -169,9 +172,14 @@ export function SettingsView({ user }: SettingsViewProps) {
     try {
       const res = await fetch("/api/ai/detect-tone", { method: "POST" })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
       if (data.tone) {
         setPrefs((p) => ({ ...p, writingTone: data.tone }))
-        toast.success(`Tone detected: ${data.tone} (from ${data.samplesAnalyzed ?? 0} emails)`)
+        toast.success(
+          data.source === "detected"
+            ? `Tone detected: ${data.tone} (from ${data.samplesAnalyzed} emails)`
+            : `Not enough sent emails to analyse — using ${data.tone}`
+        )
       }
     } catch {
       toast.error("Failed to detect tone")
@@ -219,7 +227,7 @@ export function SettingsView({ user }: SettingsViewProps) {
 
   async function deleteTemplate(id: string) {
     try {
-      const res = await fetch(`/api/templates/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/templates?id=${encodeURIComponent(id)}`, { method: "DELETE" })
       if (!res.ok) throw new Error()
       setTemplates((prev) => prev.filter((t) => t.id !== id))
       toast.success("Template deleted")
@@ -235,7 +243,7 @@ export function SettingsView({ user }: SettingsViewProps) {
       const res = await fetch("/api/sender-rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pattern: newRule.pattern.trim(), action: newRule.action }),
+        body: JSON.stringify({ senderPattern: newRule.pattern.trim(), action: newRule.action }),
       })
       if (!res.ok) throw new Error()
       const created: SenderRule = await res.json()
@@ -251,7 +259,7 @@ export function SettingsView({ user }: SettingsViewProps) {
 
   async function deleteSenderRule(id: string) {
     try {
-      const res = await fetch(`/api/sender-rules/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/sender-rules?id=${encodeURIComponent(id)}`, { method: "DELETE" })
       if (!res.ok) throw new Error()
       setSenderRules((prev) => prev.filter((r) => r.id !== id))
       toast.success("Rule deleted")
@@ -652,7 +660,7 @@ export function SettingsView({ user }: SettingsViewProps) {
                   <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                     <span className="text-sm">
                       Emails from{" "}
-                      <span className="font-mono font-medium text-foreground">{rule.pattern}</span>
+                      <span className="font-mono font-medium text-foreground">{rule.senderPattern}</span>
                     </span>
                     <span className="text-muted-foreground text-sm">&#8594;</span>
                     <Badge variant={ACTION_BADGE_VARIANT[rule.action]}>

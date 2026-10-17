@@ -9,7 +9,7 @@ import { toast } from "sonner"
 interface ActionItem {
   id: string
   threadId: string
-  description: string
+  text: string
   isDone: boolean
   createdAt: string
 }
@@ -31,7 +31,7 @@ export function ActionItemsPanel({ threadId }: ActionItemsPanelProps) {
       const res = await fetch(`/api/ai/actions?threadId=${encodeURIComponent(threadId)}`)
       if (!res.ok) throw new Error("Failed to load action items")
       const data = await res.json()
-      setActionItems(data.actionItems ?? [])
+      setActionItems(data.items ?? [])
     } catch {
       toast.error("Could not load action items")
     } finally {
@@ -53,8 +53,9 @@ export function ActionItemsPanel({ threadId }: ActionItemsPanelProps) {
       })
       if (!res.ok) throw new Error("Failed to extract action items")
       const data = await res.json()
-      setActionItems(data.actionItems ?? [])
-      toast.success("Action items extracted")
+      const items: ActionItem[] = data.items ?? []
+      setActionItems(items)
+      toast.success(items.length ? `Found ${items.length} action item${items.length > 1 ? "s" : ""}` : "No action items in this thread")
     } catch {
       toast.error("Could not extract action items")
     } finally {
@@ -154,7 +155,7 @@ export function ActionItemsPanel({ threadId }: ActionItemsPanelProps) {
                     item.isDone && "line-through decoration-muted-foreground"
                   )}
                 >
-                  {item.description}
+                  {item.text}
                 </span>
               </button>
             </li>

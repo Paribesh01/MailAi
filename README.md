@@ -164,6 +164,7 @@ cp .env.example .env
 | `BETTER_AUTH_SECRET` | ✅ | Random 32-byte hex string (`openssl rand -hex 32`) |
 | `ENCRYPTION_SECRET` | ✅ | Random 32-byte hex string for email encryption at rest |
 | `HMAC_SECRET` | ✅ | Random 32-byte hex string for OAuth state signing |
+| `CRON_SECRET` | — | Lets an external cron call `GET /api/scheduled-emails/process` (header `Authorization: Bearer <secret>`) so Send Later emails go out even when nobody has the app open |
 
 ### 3. Google Cloud setup
 

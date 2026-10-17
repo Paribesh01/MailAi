@@ -24,36 +24,55 @@ export function ScheduledView() {
 
   async function load() {
     setLoading(true)
-    const res = await fetch("/api/scheduled-emails")
-    const d = await res.json()
-    setEmails(d.emails ?? [])
-    setLoading(false)
+    try {
+      const res = await fetch("/api/scheduled-emails")
+      const d = await res.json()
+      setEmails(d.emails ?? [])
+    } catch {
+      toast.error("Couldn't load scheduled emails")
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function processDue() {
     setProcessing(true)
-    const res = await fetch("/api/scheduled-emails/process", { method: "POST" })
-    const d = await res.json()
-    if (d.sent > 0) toast.success(`Sent ${d.sent} scheduled email${d.sent > 1 ? "s" : ""}`)
-    await load()
-    setProcessing(false)
+    try {
+      const res = await fetch("/api/scheduled-emails/process", { method: "POST" })
+      const d = await res.json()
+      if (d.sent > 0) toast.success(`Sent ${d.sent} scheduled email${d.sent > 1 ? "s" : ""}`)
+      await load()
+    } catch {
+      toast.error("Couldn't send due emails")
+    } finally {
+      setProcessing(false)
+    }
   }
 
   async function cancel(id: string) {
     setCancelling(id)
-    await fetch("/api/scheduled-emails", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    })
-    setEmails((p) => p.filter((e) => e.id !== id))
-    toast.success("Cancelled")
-    setCancelling(null)
+    try {
+      const res = await fetch("/api/scheduled-emails", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.error ?? "Couldn't cancel this email")
+        await load()
+        return
+      }
+      setEmails((p) => p.filter((e) => e.id !== id))
+      toast.success("Cancelled")
+    } finally {
+      setCancelling(null)
+    }
   }
 
   useEffect(() => { load().then(() => processDue()) }, [])
 
-  const pending = emails.filter((e) => e.status === "pending")
+  const pending = emails.filter((e) => e.status === "pending" || e.status === "sending")
   const sent = emails.filter((e) => e.status === "sent")
   const failed = emails.filter((e) => e.status === "failed")
 

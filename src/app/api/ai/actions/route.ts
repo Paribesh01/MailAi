@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import Groq from "groq-sdk"
-import { FAST_MODEL } from "@/lib/ai"
+import { FAST_MODEL, parseStringArray } from "@/lib/ai"
 import { decryptEmail } from "@/lib/crypto"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
@@ -84,15 +84,7 @@ export async function POST(req: NextRequest) {
 
     const raw = completion.choices[0]?.message?.content?.trim() ?? "[]"
 
-    let actionStrings: string[] = []
-    try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        actionStrings = parsed.filter((item) => typeof item === "string")
-      }
-    } catch {
-      actionStrings = []
-    }
+    const actionStrings = parseStringArray(raw).slice(0, 20)
 
     // Upsert: delete existing action items for this thread, then create new ones
     await prisma.actionItem.deleteMany({

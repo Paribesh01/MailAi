@@ -1,14 +1,18 @@
 "use client"
 
+import { Suspense } from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { signOut } from "@/lib/auth-client"
 import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   Inbox, Star, Clock, Archive, Bell, Settings, PenSquare, BarChart2, LogOut, Send, Sparkles,
-  Crown, MailX, Trash2, ShieldOff, CalendarClock, Users,
+  MailX, Trash2, ShieldOff, CalendarClock, Users,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -16,32 +20,93 @@ interface SidebarProps {
   user: { name: string; email: string; image?: string | null }
 }
 
-const NAV = [
-  { href: "/inbox", icon: Inbox, label: "Inbox" },
-  { href: "/sent", icon: Send, label: "Sent" },
-  { href: "/inbox?starred=true", icon: Star, label: "Starred" },
-  { href: "/inbox?snoozed=true", icon: Clock, label: "Snoozed" },
-  { href: "/inbox?archived=true", icon: Archive, label: "Archived" },
-  { href: "/inbox?followups=true", icon: Bell, label: "Follow-ups" },
-  { href: "/stats", icon: BarChart2, label: "Analytics" },
-  { href: "/unsubscribe", icon: MailX, label: "Unsubscribe Manager" },
-  { href: "/spam", icon: ShieldOff, label: "Spam" },
-  { href: "/trash", icon: Trash2, label: "Trash" },
-  { href: "/scheduled", icon: CalendarClock, label: "Scheduled Emails" },
-  { href: "/merge", icon: Users, label: "Mail Merge" },
+// Grouped so related destinations sit together, with a divider between groups
+const NAV_GROUPS = [
+  [
+    { href: "/inbox", icon: Inbox, label: "Inbox" },
+    { href: "/inbox?starred=true", icon: Star, label: "Starred" },
+    { href: "/inbox?snoozed=true", icon: Clock, label: "Snoozed" },
+    { href: "/inbox?followups=true", icon: Bell, label: "Follow-ups" },
+    { href: "/sent", icon: Send, label: "Sent" },
+    { href: "/scheduled", icon: CalendarClock, label: "Scheduled" },
+    { href: "/inbox?archived=true", icon: Archive, label: "Archived" },
+  ],
+  [
+    { href: "/spam", icon: ShieldOff, label: "Spam" },
+    { href: "/trash", icon: Trash2, label: "Trash" },
+  ],
+  [
+    { href: "/merge", icon: Users, label: "Mail Merge" },
+    { href: "/unsubscribe", icon: MailX, label: "Unsubscribe Manager" },
+    { href: "/stats", icon: BarChart2, label: "Analytics" },
+  ],
 ]
+
+function isActive(href: string, pathname: string, search: string) {
+  const [path, query = ""] = href.split("?")
+  if (path !== pathname) return false
+  // "/inbox" is only active with no view filter; "/inbox?starred=true" needs that exact filter
+  if (path === "/inbox") {
+    const view = ["starred", "snoozed", "archived", "followups"].find((k) => new URLSearchParams(search).get(k) === "true")
+    return query ? query === `${view}=true` : !view
+  }
+  return true
+}
+
+function NavLinks() {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const search = searchParams.toString()
+
+  return (
+    <>
+      {NAV_GROUPS.map((group, gi) => (
+        <div key={gi} className="flex flex-col items-center gap-1 w-full">
+          {gi > 0 && <div className="w-5 h-px bg-taupe my-1" />}
+          {group.map(({ href, icon: Icon, label }) => {
+            const active = isActive(href, pathname, search)
+            return (
+              <Tooltip key={label}>
+                <TooltipTrigger render={
+                  <Link
+                    href={href}
+                    aria-label={label}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex items-center justify-center w-9 h-9 rounded-full transition-colors duration-150 shrink-0",
+                      active
+                        ? "bg-sand-light text-espresso"
+                        : "text-stone-warm hover:bg-sand-light/50 hover:text-espresso"
+                    )}
+                  >
+                    <Icon className="w-[18px] h-[18px]" />
+                  </Link>
+                } />
+                <TooltipContent side="right">{label}</TooltipContent>
+              </Tooltip>
+            )
+          })}
+        </div>
+      ))}
+    </>
+  )
+}
 
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
   async function handleSignOut() {
-    await signOut()
-    router.push("/login")
-    toast.success("Signed out")
+    try {
+      await signOut()
+      router.push("/login")
+      toast.success("Signed out")
+    } catch {
+      toast.error("Couldn't sign out. Try again.")
+    }
   }
 
-  const initials = user.name
+  const initials = (user.name || user.email)
     .split(" ")
     .map((n) => n[0])
     .join("")
@@ -66,6 +131,7 @@ export function Sidebar({ user }: SidebarProps) {
             size="icon"
             className="w-9 h-9 rounded-full text-stone-warm hover:bg-sand-light/60"
             onClick={() => router.push("/inbox?compose=true")}
+            aria-label="Compose"
           >
             <PenSquare className="w-[18px] h-[18px]" />
           </Button>
@@ -76,34 +142,11 @@ export function Sidebar({ user }: SidebarProps) {
       <div className="w-6 h-px bg-taupe my-1.5" />
 
       {/* Nav — scrollable so all items remain reachable */}
-      <div className="flex-1 flex flex-col items-center gap-1 overflow-y-auto w-full px-2 scrollbar-none">
-        {NAV.map(({ href, icon: Icon, label }) => {
-          const active = href === "/inbox"
-            ? pathname === "/inbox" && (typeof window !== "undefined" ? !window.location.search : true)
-            : href.startsWith("/inbox?")
-            ? pathname + (typeof window !== "undefined" ? window.location.search : "") === href
-            : pathname === href
-
-          return (
-            <Tooltip key={label}>
-              <TooltipTrigger render={
-                <Link
-                  href={href}
-                  className={cn(
-                    "flex items-center justify-center w-9 h-9 rounded-full transition-colors duration-150 shrink-0",
-                    active
-                      ? "bg-sand-light text-espresso"
-                      : "text-stone-warm hover:bg-sand-light/50"
-                  )}
-                >
-                  <Icon className="w-[18px] h-[18px]" />
-                </Link>
-              } />
-              <TooltipContent side="right">{label}</TooltipContent>
-            </Tooltip>
-          )
-        })}
-      </div>
+      <nav aria-label="Main" className="flex-1 flex flex-col items-center gap-1 overflow-y-auto w-full px-2 scrollbar-none">
+        <Suspense fallback={null}>
+          <NavLinks />
+        </Suspense>
+      </nav>
 
       {/* Settings */}
       <Tooltip>
@@ -123,24 +166,34 @@ export function Sidebar({ user }: SidebarProps) {
         <TooltipContent side="right">Settings</TooltipContent>
       </Tooltip>
 
-      {/* User avatar */}
-      <Tooltip>
-        <TooltipTrigger render={
-          <button onClick={handleSignOut} className="relative group mt-2">
-            <div className="w-8 h-8 rounded-full bg-slate-blue flex items-center justify-center">
+      {/* Account menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger render={
+          <button aria-label="Account" className="mt-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sand/50">
+            <div className="w-8 h-8 rounded-full bg-slate-blue flex items-center justify-center overflow-hidden">
               {user.image ? (
-                <img src={user.image} alt={user.name} className="w-8 h-8 rounded-full object-cover" />
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.image} alt="" referrerPolicy="no-referrer" className="w-8 h-8 rounded-full object-cover" />
               ) : (
                 <span className="text-white text-[11px] font-semibold">{initials}</span>
               )}
             </div>
-            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-espresso/60 opacity-0 group-hover:opacity-100 transition-opacity">
-              <LogOut className="w-3 h-3 text-white" />
-            </span>
           </button>
         } />
-        <TooltipContent side="right">Sign out ({user.email})</TooltipContent>
-      </Tooltip>
+        <DropdownMenuContent side="right" align="end" className="min-w-52">
+          <div className="px-2 py-1.5">
+            <p className="text-sm font-medium text-espresso truncate">{user.name}</p>
+            <p className="text-xs text-stone-warm truncate">{user.email}</p>
+          </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => router.push("/settings")}>
+            <Settings className="w-3.5 h-3.5 mr-2" /> Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleSignOut} className="text-coral">
+            <LogOut className="w-3.5 h-3.5 mr-2" /> Sign out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </aside>
   )
 }

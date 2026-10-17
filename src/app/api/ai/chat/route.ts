@@ -11,8 +11,13 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireSession()
     const { message, history = [] } = await req.json()
+    if (typeof message !== "string" || !message.trim()) {
+      return NextResponse.json({ error: "Message is required" }, { status: 400 })
+    }
 
     const userId = session.user.id
+    // Older rows predate isSent, so also treat mail from the user's own address as sent
+    const sentByUser = { OR: [{ isSent: true }, { from: session.user.email.toLowerCase() }] }
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest) {
           where: {
             userId,
             messageCount: { gt: 1 },
-            emails: { some: { isSent: true } },
+            emails: { some: sentByUser },
             isArchived: false,
           },
           orderBy: { lastMessageAt: "desc" },
@@ -45,7 +50,7 @@ export async function POST(req: NextRequest) {
             subject: true,
             lastMessageAt: true,
             emails: {
-              where: { isSent: false },
+              where: { NOT: sentByUser },
               orderBy: { internalDate: "desc" },
               take: 1,
               select: { fromName: true, from: true, internalDate: true, snippet: true },
@@ -78,7 +83,8 @@ export async function POST(req: NextRequest) {
             const date = reply?.internalDate
               ? new Date(reply.internalDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })
               : "recently"
-            const snippet = reply?.snippet ? ` — "${reply.snippet.slice(0, 80)}..."` : ""
+            const text = safeDecrypt(reply?.snippet, userId)
+            const snippet = text ? ` — "${text.slice(0, 80)}..."` : ""
             return `• "${t.subject}" — reply from ${from} on ${date}${snippet}`
           })
           .join("\n")
@@ -112,10 +118,14 @@ Answer based on this data. For anything outside this data, say so clearly. Keep 
       reasoning_effort: "low",
       messages: [
         { role: "system", content: systemPrompt },
-        ...history.map((h: { role: string; content: string }) => ({
-          role: h.role as "user" | "assistant",
-          content: h.content,
-        })),
+        // Keep the last few turns; drop anything that isn't a plain user/assistant message
+        ...(Array.isArray(history) ? history : [])
+          .filter(
+            (h: { role?: unknown; content?: unknown }) =>
+              (h.role === "user" || h.role === "assistant") && typeof h.content === "string"
+          )
+          .slice(-20)
+          .map((h: { role: "user" | "assistant"; content: string }) => ({ role: h.role, content: h.content })),
         { role: "user", content: message },
       ],
       temperature: 0.5,

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
-import { archiveThread, starThread, deleteThread, markAsRead, fetchThread } from "@/lib/gmail"
+import { archiveThread, starThread, deleteThread, markAsRead, setThreadRead, fetchThread } from "@/lib/gmail"
 import { encrypt, decryptThread } from "@/lib/crypto"
+import type { Prisma } from "@/generated/prisma/client"
+
+const CATEGORIES = ["NEEDS_ATTENTION", "CAN_WAIT", "IGNORE"]
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ threadId: string }> }) {
   try {
@@ -22,7 +25,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ thread
 
     // Live-fetch from Gmail to pick up any replies that arrived since last sync
     try {
-      const live = await fetchThread(session.user.id, thread.gmailThreadId)
+      const live = await fetchThread(session.user.id, thread.gmailThreadId, thread.accountEmail)
       const knownIds = new Set(thread.emails.map((e) => e.gmailMessageId))
       const newMessages = live.messages.filter((m) => !knownIds.has(m.gmailMessageId))
 
@@ -43,6 +46,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ thread
                 bodyText: msg.bodyText ? encrypt(msg.bodyText, session.user.id) : null,
                 snippet: encrypt(msg.snippet, session.user.id),
                 isRead: msg.isRead,
+                isSent: msg.isSent,
                 internalDate: msg.internalDate,
                 headers: msg.headers as any,
                 attachments: msg.attachments as any,
@@ -55,7 +59,8 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ thread
           where: { id: thread.id },
           data: {
             messageCount: live.messageCount,
-            snippet: live.snippet,
+            snippet: encrypt(live.snippet, session.user.id),
+            historyId: live.historyId ?? null,
             lastMessageAt: live.lastMessageAt,
             participantEmails: live.participantEmails,
             participantNames: live.participantNames,
@@ -74,7 +79,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ thread
           const unread = updated.emails.find((e) => !e.isRead)
           if (unread) {
             await Promise.all([
-              markAsRead(session.user.id, unread.gmailMessageId),
+              markAsRead(session.user.id, unread.gmailMessageId, thread.accountEmail),
               prisma.email.update({ where: { id: unread.id }, data: { isRead: true } }),
               prisma.thread.update({ where: { id: threadId }, data: { isRead: true } }),
             ])
@@ -90,7 +95,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ thread
     const unreadEmail = thread.emails.find((e) => !e.isRead)
     if (unreadEmail) {
       await Promise.all([
-        markAsRead(session.user.id, unreadEmail.gmailMessageId),
+        markAsRead(session.user.id, unreadEmail.gmailMessageId, thread.accountEmail),
         prisma.email.update({ where: { id: unreadEmail.id }, data: { isRead: true } }),
         prisma.thread.update({ where: { id: threadId }, data: { isRead: true } }),
       ])
@@ -114,25 +119,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ th
     })
     if (!thread) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const updates: any = {}
+    const updates: Prisma.ThreadUpdateInput = {}
+    const account = thread.accountEmail
 
-    if (body.isArchived !== undefined) {
+    if (typeof body.isArchived === "boolean") {
       updates.isArchived = body.isArchived
-      await archiveThread(session.user.id, thread.gmailThreadId)
+      await archiveThread(session.user.id, thread.gmailThreadId, body.isArchived, account)
     }
-    if (body.isStarred !== undefined) {
+    if (typeof body.isStarred === "boolean") {
       updates.isStarred = body.isStarred
-      await starThread(session.user.id, thread.gmailThreadId, body.isStarred)
+      await starThread(session.user.id, thread.gmailThreadId, body.isStarred, account)
     }
-    if (body.isRead !== undefined) updates.isRead = body.isRead
-    if (body.category !== undefined) updates.category = body.category
-    if (body.isSnoozed !== undefined) {
+    if (typeof body.isRead === "boolean") {
+      updates.isRead = body.isRead
+      await setThreadRead(session.user.id, thread.gmailThreadId, body.isRead, account)
+    }
+    if (body.category !== undefined) {
+      if (!CATEGORIES.includes(body.category)) {
+        return NextResponse.json({ error: "Invalid category" }, { status: 400 })
+      }
+      updates.category = body.category
+    }
+    if (typeof body.isSnoozed === "boolean") {
+      const until = body.snoozedUntil ? new Date(body.snoozedUntil) : null
+      if (body.isSnoozed && (!until || isNaN(until.getTime()))) {
+        return NextResponse.json({ error: "Invalid snooze time" }, { status: 400 })
+      }
       updates.isSnoozed = body.isSnoozed
-      updates.snoozedUntil = body.snoozedUntil ? new Date(body.snoozedUntil) : null
+      updates.snoozedUntil = body.isSnoozed ? until : null
     }
 
     const updated = await prisma.thread.update({ where: { id: threadId }, data: updates })
-    return NextResponse.json(updated)
+    return NextResponse.json(decryptThread(updated, session.user.id))
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error"
     return NextResponse.json({ error: msg }, { status: 500 })
@@ -149,7 +167,7 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ thr
     })
     if (!thread) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    await deleteThread(session.user.id, thread.gmailThreadId)
+    await deleteThread(session.user.id, thread.gmailThreadId, thread.accountEmail)
     await prisma.thread.delete({ where: { id: threadId } })
 
     return NextResponse.json({ ok: true })

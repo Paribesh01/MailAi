@@ -15,6 +15,14 @@ function interpolate(template: string, vars: Record<string, string | undefined>)
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`)
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
 export async function POST(req: NextRequest) {
   const session = await requireSession()
   const { subject, body, recipients, enableTracking } = await req.json() as {
@@ -25,6 +33,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (!recipients?.length) return NextResponse.json({ error: "No recipients" }, { status: 400 })
+  if (recipients.length > 100) {
+    return NextResponse.json({ error: "Send to at most 100 recipients at a time" }, { status: 400 })
+  }
+  if (typeof subject !== "string" || typeof body !== "string") {
+    return NextResponse.json({ error: "Subject and body are required" }, { status: 400 })
+  }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL!
   const results: { email: string; status: "sent" | "failed"; error?: string }[] = []
@@ -32,7 +46,8 @@ export async function POST(req: NextRequest) {
   for (const r of recipients) {
     const vars: Record<string, string | undefined> = { ...r, name: r.name ?? r.email.split("@")[0] }
     const personalizedSubject = interpolate(subject, vars)
-    let personalizedBody = interpolate(body.replace(/\n/g, "<br>"), vars)
+    // Body is plain text: escape it (and the CSV values) before turning newlines into <br>
+    let personalizedBody = escapeHtml(interpolate(body, vars)).replace(/\n/g, "<br>")
 
     if (enableTracking) {
       const trackingId = createId()

@@ -3,14 +3,24 @@ import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { fetchThreads, fetchThreadsForLinkedAccount, isGmailQuotaError } from "@/lib/gmail"
 import { categorizeEmail } from "@/lib/ai"
+import { processDueScheduledEmails } from "@/lib/scheduled"
 import { encrypt } from "@/lib/crypto"
 import type { GmailThread } from "@/lib/gmail"
+
+type SenderRule = { senderPattern: string; action: "NEEDS_ATTENTION" | "CAN_WAIT" | "IGNORE" }
+
+// A rule matches when its pattern appears in the sender's address or name ("@acme.com", "newsletter")
+function matchSenderRule(rules: SenderRule[], from: string, fromName: string | null) {
+  const haystack = `${from} ${fromName ?? ""}`.toLowerCase()
+  return rules.find((r) => r.senderPattern && haystack.includes(r.senderPattern.toLowerCase()))
+}
 
 async function syncThreadBatch(
   threads: GmailThread[],
   userId: string,
   accountEmail: string | null,
-  vipSet: Set<string>
+  vipSet: Set<string>,
+  rules: SenderRule[]
 ) {
   let synced = 0
   let newThreads = 0
@@ -27,8 +37,11 @@ async function syncThreadBatch(
       newThreads++
       const firstMsg = t.messages[0]
       if (firstMsg) {
+        const rule = matchSenderRule(rules, firstMsg.from, firstMsg.fromName)
         if (vipSet.has(firstMsg.from.toLowerCase())) {
           category = "NEEDS_ATTENTION"
+        } else if (rule) {
+          category = rule.action
         } else {
           const result = await categorizeEmail({
             subject: t.subject,
@@ -93,11 +106,12 @@ async function syncThreadBatch(
           bodyText: msg.bodyText ? encrypt(msg.bodyText, userId) : null,
           snippet: encrypt(msg.snippet, userId),
           isRead: msg.isRead,
+          isSent: msg.isSent,
           internalDate: msg.internalDate,
           headers: msg.headers as any,
           attachments: msg.attachments as any,
         },
-        update: { isRead: msg.isRead },
+        update: { isRead: msg.isRead, isSent: msg.isSent },
       })
     }
 
@@ -129,6 +143,10 @@ export async function POST() {
       select: { email: true },
     })
     const vipSet = new Set(vipContacts.map((v) => v.email.toLowerCase()))
+    const senderRules = await prisma.senderRule.findMany({
+      where: { userId },
+      select: { senderPattern: true, action: true },
+    })
 
     // Only threads whose Gmail historyId changed get re-fetched in full
     const known = await prisma.thread.findMany({
@@ -142,7 +160,7 @@ export async function POST() {
 
     // Sync primary account (accountEmail = null means primary)
     const { threads: primaryThreads } = await fetchThreads(userId, 50, undefined, knownHistoryIds)
-    const primary = await syncThreadBatch(primaryThreads, userId, null, vipSet)
+    const primary = await syncThreadBatch(primaryThreads, userId, null, vipSet, senderRules)
     totalSynced += primary.synced
     totalNew += primary.newThreads
 
@@ -155,13 +173,18 @@ export async function POST() {
     for (const linked of linkedAccounts) {
       try {
         const { threads: linkedThreads } = await fetchThreadsForLinkedAccount(linked.id, 50, knownHistoryIds)
-        const result = await syncThreadBatch(linkedThreads, userId, linked.email, vipSet)
+        const result = await syncThreadBatch(linkedThreads, userId, linked.email, vipSet, senderRules)
         totalSynced += result.synced
         totalNew += result.newThreads
       } catch (err: any) {
         console.error(`Failed to sync linked account ${linked.email}:`, err.message)
       }
     }
+
+    // Piggyback on the background poll so Send Later works while the app is open
+    await processDueScheduledEmails(userId).catch((err) =>
+      console.error("Failed to process scheduled emails:", err)
+    )
 
     await prisma.emailSync.upsert({
       where: { userId },

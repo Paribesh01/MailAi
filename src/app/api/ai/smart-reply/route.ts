@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import Groq from "groq-sdk"
-import { FAST_MODEL } from "@/lib/ai"
+import { FAST_MODEL, parseStringArray } from "@/lib/ai"
 import { decryptEmail } from "@/lib/crypto"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! })
@@ -52,25 +52,10 @@ export async function POST(req: NextRequest) {
 
     const raw = completion.choices[0]?.message?.content?.trim() ?? "[]"
 
-    let replies: string[]
-    try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        replies = parsed.slice(0, 3).map(String)
-      } else {
-        replies = [
-          "Sure, sounds good!",
-          "Let me check and get back to you.",
-          "Can we schedule a call?",
-        ]
-      }
-    } catch {
-      replies = [
-        "Sure, sounds good!",
-        "Let me check and get back to you.",
-        "Can we schedule a call?",
-      ]
-    }
+    const parsed = parseStringArray(raw).slice(0, 3)
+    const replies = parsed.length > 0
+      ? parsed
+      : ["Sure, sounds good!", "Let me check and get back to you.", "Can we schedule a call?"]
 
     return NextResponse.json({ replies })
   } catch (err: unknown) {

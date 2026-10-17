@@ -42,7 +42,8 @@ export async function GET() {
 
     for (const e of emails) {
       const headers = (e.headers ?? {}) as Record<string, string>
-      const unsubHeader = headers["List-Unsubscribe"] ?? headers["list-unsubscribe"] ?? ""
+      const unsubKey = Object.keys(headers).find((k) => k.toLowerCase() === "list-unsubscribe")
+      const unsubHeader = unsubKey ? headers[unsubKey] : ""
       const { mailto, url } = parseUnsubscribeHeader(unsubHeader)
 
       const existing = senderMap.get(e.from)
