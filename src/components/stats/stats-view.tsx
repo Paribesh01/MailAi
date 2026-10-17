@@ -148,7 +148,8 @@ export function StatsView() {
     : 0
 
   return (
-    <div className="min-h-full bg-cream overflow-y-auto">
+    <div className="flex h-full overflow-hidden">
+      <div className="flex-1 min-w-0 bg-cream overflow-y-auto">
       <div className="mx-auto max-w-5xl space-y-8 px-6 py-8">
 
         {/* Header */}
@@ -293,6 +294,7 @@ export function StatsView() {
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       <ChatAssistant />

@@ -253,7 +253,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left pane */}
-      <div className={cn("flex flex-col border-r", selectedThread ? "w-96 shrink-0" : "flex-1")}>
+      <div className={cn("flex flex-col border-r", selectedThread ? "w-96 shrink-0" : "flex-1 min-w-0")}>
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-taupe bg-cream">
           <SearchBar value={searchQuery} onChange={handleSearch} />
@@ -330,7 +330,7 @@ export function InboxView({ userName, userEmail }: InboxViewProps) {
 
       {/* Thread panel */}
       {selectedThread && (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <ThreadPanel
             threadId={selectedThread}
             onClose={() => setSelectedThread(null)}
